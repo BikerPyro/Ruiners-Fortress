@@ -14,6 +14,7 @@
 #include <vgui_controls/ImagePanel.h>
 #include "steam/steam_api.h"
 #include "c_baseplayer.h"
+#include "utlarray.h"
 
 // size of the friend background frame (see texture ico_friend_indicator_avatar)
 #define FRIEND_ICON_SIZE_X	(55)	
@@ -26,34 +27,40 @@
 // size of the standard avatar icon (unless override by SetAvatarSize)
 #define DEFAULT_AVATAR_SIZE		(32)
 
-typedef struct GifFileType;
+// NOTE: Steamworks's max file size for animated avatars is 2MB
+#define ANIMATED_AVATAR_MAX_FRAME_COUNT (128)
+
+typedef struct GifFileType GifFileType;
 typedef unsigned char GifByteType;
 
 //-----------------------------------------------------------------------------
-// Purpose: Simple helper for decoding GIFs
+// Purpose: Simple utility for decoding GIFs
 //-----------------------------------------------------------------------------
 class CGIFHelper
 {
 public:
-	CGIFHelper( void ) : m_pImage( NULL ), m_iSelectedFrame( 0 ) {}
+	CGIFHelper( void ) : m_pImage( NULL ), m_pPrevFrameBuffer( NULL ),
+		m_iSelectedFrame( 0 ), m_dIterateTime( 0.0 ) {}
 	~CGIFHelper( void ) { CloseImage(); }
 
-	bool SetImage( CUtlBuffer* pData );
+	bool OpenImage( CUtlBuffer* pData );
 	void CloseImage( void );
 
 	// iterates to the next frame, returns true if we have just looped
 	bool NextFrame( void );
 	int GetSelectedFrame( void ) const { return m_iSelectedFrame; }
+	bool ShouldIterateFrame( void ) const { return m_dIterateTime < Plat_FloatTime(); }
 
 	// retrieve data for the current frame
-	void GetRGBA( uint8** ppOutFrameData );
-	void GetSize( int& iWidth, int& iHeight ) const;
-	bool ShouldIterateFrame( void ) const;
+	void GetRGBA( uint8** ppOutFrameBuffer ); // size of the out frame buffer should be iScreenWide * iScreenTall * 4
+	void GetFrameSize( int& iWide, int& iTall ) const;
+	void GetScreenSize( int& iWide, int& iTall ) const;
 
 private:
 	static int ReadData( GifFileType* pFile, GifByteType* pBuffer, int cubBuffer );
 
 	GifFileType* m_pImage;
+	uint8* m_pPrevFrameBuffer;
 	int m_iSelectedFrame;
 	double m_dIterateTime;
 };
@@ -183,7 +190,8 @@ private:
 	void LoadAvatarImage();
 
 	Color m_Color;
-	CUtlVector< int > m_textureIDs; // animated avatars use multiple textures
+	// NOTE: index 0 is ensured to always be valid (texture ID of either static avatar or first animation frame)
+	CUtlArray< int, ANIMATED_AVATAR_MAX_FRAME_COUNT > m_textureIDs;
 	int m_nX, m_nY;
 	int m_wide, m_tall;
 	int	m_avatarWide, m_avatarTall;
@@ -197,6 +205,7 @@ private:
 	CHudTexture *m_pFriendIcon;
 	CSteamID	m_SteamID;
 
+	const char* m_pszAvatarUrl;
 	bool m_bAnimating;
 	CGIFHelper m_animatedImage;
 
@@ -214,7 +223,8 @@ private:
 	// HPE_END
 	//=============================================================================
 
-	static CUtlMap< AvatarImagePair_t, int > s_AvatarImageCache;
+	static CUtlMap< AvatarImagePair_t, int > s_staticAvatarCache;
+	static CUtlMap< const char*, CUtlArray< int, ANIMATED_AVATAR_MAX_FRAME_COUNT > > s_animatedAvatarCache;
 	static bool m_sbInitializedAvatarCache;
 
 	CCallback<CAvatarImage, PersonaStateChange_t, false> m_sPersonaStateChangedCallback;

@@ -18,7 +18,8 @@
 
 DECLARE_BUILD_FACTORY( CAvatarImagePanel );
 
-CUtlMap< AvatarImagePair_t, int> CAvatarImage::s_AvatarImageCache; // cache of steam id's to textureids to use for images
+CUtlMap< AvatarImagePair_t, int > CAvatarImage::s_staticAvatarCache; // cache of steam id's to textureids to use for static avatars
+CUtlMap< const char*, CUtlArray< int, ANIMATED_AVATAR_MAX_FRAME_COUNT > > CAvatarImage::s_animatedAvatarCache; // cache of avatar URLs to textureids to use for animated avatars
 bool CAvatarImage::m_sbInitializedAvatarCache = false;
 
 ConVar cl_animated_avatars( "cl_animated_avatars", "1", FCVAR_ARCHIVE, "Enable animated avatars" );
@@ -48,10 +49,8 @@ m_sEquippedProfileItemsChangedCallback( this, &CAvatarImage::OnEquippedProfileIt
 	// [tj] Default to drawing the friend icon for avatars
 	m_bDrawFriend = true;
 
-	m_textureIDs.EnsureCapacity( 1 );
-
 	// [menglish] Default icon for avatar icons if there is no avatar icon for the player
-	m_textureIDs.AddToTail( -1 );
+	m_textureIDs.FillWithValue( -1 );
 
 	// set up friend icon
 	m_pFriendIcon = gHUD.GetIcon( "ico_friend_indicator_avatar" );
@@ -67,7 +66,8 @@ m_sEquippedProfileItemsChangedCallback( this, &CAvatarImage::OnEquippedProfileIt
 	if ( !m_sbInitializedAvatarCache) 
 	{
 		m_sbInitializedAvatarCache = true;
-		SetDefLessFunc( s_AvatarImageCache );
+		SetDefLessFunc( s_staticAvatarCache );
+		SetDefLessFunc( s_animatedAvatarCache );
 	}
 }
 
@@ -133,11 +133,11 @@ void CAvatarImage::OnPersonaStateChanged( PersonaStateChange_t *info )
 //-----------------------------------------------------------------------------
 void CAvatarImage::OnEquippedProfileItemsRequested( EquippedProfileItems_t* pInfo, bool bIOFailure )
 {
-	if( pInfo->m_steamID == m_SteamID )
-	{
-		m_bLoadPending = true;
-		LoadAvatarImage();
-	}
+	m_bValid = false;
+	m_bLoadPending = true;
+
+	UpdateAvatarImageSize();
+	LoadAvatarImage();
 }
 
 //-----------------------------------------------------------------------------
@@ -157,45 +157,45 @@ void CAvatarImage::OnEquippedProfileItemsChanged( EquippedProfileItemsChanged_t*
 //-----------------------------------------------------------------------------
 void CAvatarImage::OnHTTPRequestCompleted( HTTPRequestCompleted_t* pInfo, bool bIOFailure )
 {
-	if( pInfo->m_ulContextValue == m_SteamID.ConvertToUint64() )
+	CUtlBuffer buf;
+	buf.EnsureCapacity( pInfo->m_unBodySize );
+	buf.SeekPut( CUtlBuffer::SEEK_HEAD, pInfo->m_unBodySize );
+	Verify( SteamHTTP()->GetHTTPResponseBodyData( pInfo->m_hRequest, ( uint8* )buf.Base(), pInfo->m_unBodySize ) );
+
+	m_animatedImage.OpenImage( &buf );
+
+	m_bAnimating = false;
+
+	// Construct textures from the gif data
+	int iFrame = 0;
+	do
 	{
-		uint32 unBytes;
-		Verify( SteamHTTP()->GetHTTPResponseBodySize(pInfo->m_hRequest, &unBytes));
-		CUtlBuffer buf;
-		buf.EnsureCapacity( unBytes );
-		buf.SeekPut( CUtlBuffer::SEEK_HEAD, unBytes );
-		Verify( SteamHTTP()->GetHTTPResponseBodyData( pInfo->m_hRequest, ( uint8* )buf.Base(), unBytes ) );
-
-		m_animatedImage.SetImage( &buf );
-
-		// Destroy old textures
-		FOR_EACH_VEC( m_textureIDs, i )
+		if( iFrame >= ANIMATED_AVATAR_MAX_FRAME_COUNT )
 		{
-			vgui::surface()->DestroyTextureID( m_textureIDs[ i ] );
+			// too many frames, stop processing
+			break;
 		}
-		m_textureIDs.Purge();
 
-		// Construct textures from the gif data
-		do
-		{
-			// Create a new texture for this frame
-			int i = m_textureIDs.AddToTail( vgui::surface()->CreateNewTextureID( true ) );
+		m_textureIDs[ iFrame ] = vgui::surface()->CreateNewTextureID( true );
 
-			// Get the RGBA data for this frame
-			int iWide, iTall;
-			m_animatedImage.GetSize( iWide, iTall );
-			uint8* pDest = new uint8[ iWide * iTall * 4 ];
-			m_animatedImage.GetRGBA( &pDest );
+		int iWide, iTall;
+		m_animatedImage.GetScreenSize( iWide, iTall );
+		uint8* pDest = new uint8[ iWide * iTall * 4 ];
+		m_animatedImage.GetRGBA( &pDest );
 
-			// Bind to the texture
-			g_pMatSystemSurface->DrawSetTextureRGBAEx2( m_textureIDs[ i ], pDest, iWide, iTall, IMAGE_FORMAT_RGBA8888, true );
-			delete[] pDest;
-		} while( !m_animatedImage.NextFrame() );
+		// bind RGBA data to the texture
+		g_pMatSystemSurface->DrawSetTextureRGBAEx2( m_textureIDs[ iFrame ], pDest, iWide, iTall, IMAGE_FORMAT_RGBA8888, true );
+		delete[] pDest;
 
-		m_bAnimating = true;
+		iFrame++;
+	} while( !m_animatedImage.NextFrame() );
 
-		steamapicontext->SteamHTTP()->ReleaseHTTPRequest( pInfo->m_hRequest );
-	}
+	// cache our texture IDs
+	s_animatedAvatarCache.Insert( m_pszAvatarUrl, m_textureIDs );
+
+	m_bAnimating = true;
+
+	steamapicontext->SteamHTTP()->ReleaseHTTPRequest( pInfo->m_hRequest );
 }
 
 void CAvatarImage::UpdateAvatarImageSize()
@@ -219,25 +219,29 @@ void CAvatarImage::UpdateAvatarImageSize()
 //-----------------------------------------------------------------------------
 void CAvatarImage::LoadAnimatedAvatar()
 {
-	if( steamapicontext->SteamHTTP() && steamapicontext->SteamFriends()->BHasEquippedProfileItem( m_SteamID, k_ECommunityProfileItemType_AnimatedAvatar ) )
+	if( SteamHTTP() && SteamFriends()->BHasEquippedProfileItem( m_SteamID, k_ECommunityProfileItemType_AnimatedAvatar ) )
 	{
-		const char* pszAvatarUrl = SteamFriends()->GetProfileItemPropertyString( m_SteamID, k_ECommunityProfileItemType_AnimatedAvatar, k_ECommunityProfileItemProperty_ImageSmall );
+		m_pszAvatarUrl = SteamFriends()->GetProfileItemPropertyString( m_SteamID, k_ECommunityProfileItemType_AnimatedAvatar, k_ECommunityProfileItemProperty_ImageSmall );
 
-		HTTPRequestHandle hRequest = steamapicontext->SteamHTTP()->CreateHTTPRequest( k_EHTTPMethodGET, pszAvatarUrl );
+		// See if we have this avatar cached already...
+		int iIndex = s_animatedAvatarCache.Find( m_pszAvatarUrl );
+		if( iIndex != s_animatedAvatarCache.InvalidIndex() )
+		{
+			m_textureIDs = s_animatedAvatarCache[ iIndex ];
+			m_bAnimating = true;
+			return;
+		}
+
+		HTTPRequestHandle hRequest = SteamHTTP()->CreateHTTPRequest( k_EHTTPMethodGET, m_pszAvatarUrl );
 		if( hRequest == INVALID_HTTPREQUEST_HANDLE )
 		{
-			// Try again next tick
-			m_bValid = false;
 			return;
 		}
 
 		SteamAPICall_t hSendCall;
-		steamapicontext->SteamHTTP()->SetHTTPRequestContextValue( hRequest, m_SteamID.ConvertToUint64() );
-		if( !steamapicontext->SteamHTTP()->SendHTTPRequest( hRequest, &hSendCall ) )
+		if( !SteamHTTP()->SendHTTPRequest( hRequest, &hSendCall ) )
 		{
-			// Try again next tick
-			steamapicontext->SteamHTTP()->ReleaseHTTPRequest( hRequest );
-			m_bValid = false;
+			SteamHTTP()->ReleaseHTTPRequest( hRequest );
 			return;
 		}
 		m_sHTTPRequestCompletedCallback.Set( hSendCall, this, &CAvatarImage::OnHTTPRequestCompleted );
@@ -331,16 +335,16 @@ void CAvatarImage::UpdateFriendStatus( void )
 //-----------------------------------------------------------------------------
 void CAvatarImage::InitFromRGBA( int iAvatar, const byte *rgba, int width, int height )
 {
-	int iTexIndex = s_AvatarImageCache.Find( AvatarImagePair_t( m_SteamID, iAvatar ) );
-	if ( iTexIndex == s_AvatarImageCache.InvalidIndex() )
+	int iTexIndex = s_staticAvatarCache.Find( AvatarImagePair_t( m_SteamID, iAvatar ) );
+	if ( iTexIndex == s_staticAvatarCache.InvalidIndex() )
 	{
 		m_textureIDs[ 0 ] = vgui::surface()->CreateNewTextureID(true);
 		g_pMatSystemSurface->DrawSetTextureRGBAEx2( m_textureIDs[ 0 ], rgba, width, height, IMAGE_FORMAT_RGBA8888, true );
-		iTexIndex = s_AvatarImageCache.Insert( AvatarImagePair_t( m_SteamID, iAvatar ) );
-		s_AvatarImageCache[ iTexIndex ] = m_textureIDs[ 0 ];
+		iTexIndex = s_staticAvatarCache.Insert( AvatarImagePair_t( m_SteamID, iAvatar ) );
+		s_staticAvatarCache[ iTexIndex ] = m_textureIDs[ 0 ];
 	}
 	else
-		m_textureIDs[ 0 ] = s_AvatarImageCache[iTexIndex];
+		m_textureIDs[ 0 ] = s_staticAvatarCache[iTexIndex];
 	
 	m_bValid = true;
 }
@@ -627,7 +631,7 @@ int CGIFHelper::ReadData( GifFileType* pFile, GifByteType* pBuffer, int cubBuffe
 	return nBytesToRead;
 }
 
-bool CGIFHelper::SetImage( CUtlBuffer* pData )
+bool CGIFHelper::OpenImage( CUtlBuffer* pData )
 {
 	if( m_pImage )
 	{
@@ -649,6 +653,10 @@ bool CGIFHelper::SetImage( CUtlBuffer* pData )
 		return false;
 	}
 
+	int iWide, iTall;
+	GetScreenSize( iWide, iTall );
+	m_pPrevFrameBuffer = new uint8[ iWide * iTall * 4 ];
+
 	return true;
 }
 
@@ -657,13 +665,17 @@ void CGIFHelper::CloseImage( void )
 	if( !m_pImage )
 		return;
 
+	delete[] m_pPrevFrameBuffer;
+
 	int nError;
 	if( DGifCloseFile( m_pImage, &nError ) != GIF_OK )
 	{
 		DevWarning( "[CGIFHelper] Failed to close GIF image: %s\n", GifErrorString( nError ) );
 	}
 	m_pImage = NULL;
+	m_pPrevFrameBuffer = NULL;
 	m_iSelectedFrame = 0;
+	m_dIterateTime = 0.0;
 }
 
 bool CGIFHelper::NextFrame( void )
@@ -690,7 +702,7 @@ bool CGIFHelper::NextFrame( void )
 	return bLooped;
 }
 
-void CGIFHelper::GetRGBA( uint8** ppOutFrameData )
+void CGIFHelper::GetRGBA( uint8** ppOutFrameBuffer )
 {
 	if( !m_pImage )
 		return;
@@ -699,25 +711,117 @@ void CGIFHelper::GetRGBA( uint8** ppOutFrameData )
 
 	ColorMapObject* pColorMap = pFrame->ImageDesc.ColorMap ? pFrame->ImageDesc.ColorMap : m_pImage->SColorMap;
 	GifByteType* pRasterBits = pFrame->RasterBits;
-	int iWidth = pFrame->ImageDesc.Width;
-	int iHeight = pFrame->ImageDesc.Height;
+
+	int iScreenWide, iScreenTall;
+	GetScreenSize( iScreenWide, iScreenTall );
+	int iFrameWide, iFrameTall;
+	GetFrameSize( iFrameWide, iFrameTall );
+
+	int iFrameLeft = pFrame->ImageDesc.Left;
+	int iFrameTop = pFrame->ImageDesc.Top;
+
+	int nTransparentIndex = NO_TRANSPARENT_COLOR;
+	int nDisposalMethod = DISPOSAL_UNSPECIFIED;
+
+	GraphicsControlBlock gcb;
+	if( DGifSavedExtensionToGCB( m_pImage, m_iSelectedFrame, &gcb ) == GIF_OK )
+	{
+		nTransparentIndex = gcb.TransparentColor;
+		nDisposalMethod = gcb.DisposalMode;
+	}
+
+	// temporary buffer for current frame
+	uint8* pCurFrameBuffer = ( uint8* )stackalloc( iScreenWide * iScreenTall * 4 );
+	Q_memcpy( pCurFrameBuffer, m_pPrevFrameBuffer, iScreenWide * iScreenTall * 4 );
 
 	int iPixel = 0;
-	for( int y = 0; y < iHeight; y++ )
+	if( pFrame->ImageDesc.Interlace )
 	{
-		for( int x = 0; x < iWidth; x++ )
+		const int k_rowOffsets[] = { 0, 4, 2, 1 }; // interlacing row offsets
+		const int k_rowIncrements[] = { 8, 8, 4, 2 }; // interlacing row increments
+
+		for( int nPass = 0; nPass < 4; nPass++ )
 		{
-			GifColorType& color = pColorMap->Colors[ pRasterBits[ iPixel ] ];
-			ppOutFrameData[ 0 ][ iPixel * 4 + 0 ] = color.Red;
-			ppOutFrameData[ 0 ][ iPixel * 4 + 1 ] = color.Green;
-			ppOutFrameData[ 0 ][ iPixel * 4 + 2 ] = color.Blue;
-			ppOutFrameData[ 0 ][ iPixel * 4 + 3 ] = 255; // We don't care about transparency
-			iPixel++;
+			for( int y = k_rowOffsets[ nPass ]; y < iFrameTall; y += k_rowIncrements[ nPass ] )
+			{
+				if( y + iFrameTop >= iScreenTall ) continue;
+				for( int x = 0; x < iFrameWide; x++ )
+				{
+					if( x + iFrameLeft >= iScreenWide ) continue;
+					int iOut = ( ( y + iFrameTop ) * iScreenWide + ( x + iFrameLeft ) ) * 4;
+					GifByteType colorIndex = pRasterBits[ iPixel ];
+					if( colorIndex < pColorMap->ColorCount && colorIndex != nTransparentIndex )
+					{
+						GifColorType& color = pColorMap->Colors[ colorIndex ];
+						pCurFrameBuffer[ iOut + 0 ] = color.Red;
+						pCurFrameBuffer[ iOut + 1 ] = color.Green;
+						pCurFrameBuffer[ iOut + 2 ] = color.Blue;
+						pCurFrameBuffer[ iOut + 3 ] = 255;
+					}
+					// else retain prev frame buffer pixel data
+					iPixel++;
+				}
+			}
 		}
 	}
+	else
+	{
+		for( int y = 0; y < iFrameTall; y++ )
+		{
+			if( y + iFrameTop >= iScreenTall ) continue;
+			for( int x = 0; x < iFrameWide; x++ )
+			{
+				if( x + iFrameLeft >= iScreenWide ) continue;
+				int iOut = ( ( y + iFrameTop ) * iScreenWide + ( x + iFrameLeft ) ) * 4;
+				GifByteType colorIndex = pRasterBits[ iPixel ];
+				if( colorIndex < pColorMap->ColorCount && colorIndex != nTransparentIndex )
+				{
+					GifColorType& color = pColorMap->Colors[ colorIndex ];
+					pCurFrameBuffer[ iOut + 0 ] = color.Red;
+					pCurFrameBuffer[ iOut + 1 ] = color.Green;
+					pCurFrameBuffer[ iOut + 2 ] = color.Blue;
+					pCurFrameBuffer[ iOut + 3 ] = 255;
+				}
+				// else retain prev frame buffer pixel data
+				iPixel++;
+			}
+		}
+	}
+
+	// copy to output
+	Q_memcpy( *ppOutFrameBuffer, pCurFrameBuffer, iScreenWide * iScreenTall * 4 );
+
+	// update prev frame buffer depending on disposal method
+	switch( nDisposalMethod )
+	{
+	case DISPOSE_BACKGROUND:
+	{
+		for( int y = iFrameTop; y < iFrameTop + iFrameTall && y < iScreenTall; y++ )
+		{
+			for( int x = iFrameLeft; x < iFrameLeft + iFrameWide && x < iScreenWide; x++ )
+			{
+				int idx = ( y * iScreenWide + x ) * 4;
+				m_pPrevFrameBuffer[ idx + 0 ] = m_pImage->SBackGroundColor;
+				m_pPrevFrameBuffer[ idx + 1 ] = m_pImage->SBackGroundColor;
+				m_pPrevFrameBuffer[ idx + 2 ] = m_pImage->SBackGroundColor;
+				m_pPrevFrameBuffer[ idx + 3 ] = 255;
+			}
+		}
+		break;
+	}
+	case DISPOSE_PREVIOUS:
+		break;
+	case DISPOSAL_UNSPECIFIED:
+	case DISPOSE_DO_NOT:
+	default:
+		Q_memcpy( m_pPrevFrameBuffer, pCurFrameBuffer, iScreenWide * iScreenTall * 4 );
+		break;
+	}
+
+	stackfree( pCurFrameBuffer );
 }
 
-void CGIFHelper::GetSize( int& iWidth, int& iHeight ) const
+void CGIFHelper::GetFrameSize( int& iWidth, int& iHeight ) const
 {
 	if( !m_pImage )
 	{
@@ -730,7 +834,14 @@ void CGIFHelper::GetSize( int& iWidth, int& iHeight ) const
 	iHeight = imageDesc.Height;
 }
 
-bool CGIFHelper::ShouldIterateFrame( void ) const
+void CGIFHelper::GetScreenSize( int& iWide, int& iTall ) const
 {
-	return m_dIterateTime < Plat_FloatTime();
+	if( !m_pImage )
+	{
+		iWide = iTall = 0;
+		return;
+	}
+
+	iWide = m_pImage->SWidth;
+	iTall = m_pImage->SHeight;
 }
