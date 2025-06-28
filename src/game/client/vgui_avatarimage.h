@@ -15,6 +15,7 @@
 #include "steam/steam_api.h"
 #include "c_baseplayer.h"
 #include "utlarray.h"
+#include "utlpair.h"
 
 // size of the friend background frame (see texture ico_friend_indicator_avatar)
 #define FRIEND_ICON_SIZE_X	(55)	
@@ -27,8 +28,18 @@
 // size of the standard avatar icon (unless override by SetAvatarSize)
 #define DEFAULT_AVATAR_SIZE		(32)
 
-// NOTE: Steamworks's max file size for animated avatars is 2MB
-#define ANIMATED_AVATAR_MAX_FRAME_COUNT (128)
+#define ANIMATED_AVATAR_MAX_FRAME_COUNT (256)
+
+// Steamworks's max file size for animated avatars is 2MB, we need to be careful to
+// not run out of memory especially on 32-bit as cache size can grow fast.
+// We do frequent checks to deallocate unused avatars when we go past cache max size limit
+#ifdef PLATFORM_64BITS
+#define ANIMATED_AVATAR_CACHE_MAX_COUNT (128)
+#define ANIMATED_AVATAR_CACHE_UNUSED_TIME (30.0) // in seconds
+#else
+#define ANIMATED_AVATAR_CACHE_MAX_COUNT (64)
+#define ANIMATED_AVATAR_CACHE_UNUSED_TIME (10.0) // in seconds
+#endif //PLATFORM_64BITS
 
 typedef struct GifFileType GifFileType;
 typedef unsigned char GifByteType;
@@ -43,7 +54,7 @@ public:
 		m_iSelectedFrame( 0 ), m_dIterateTime( 0.0 ) {}
 	~CGIFHelper( void ) { CloseImage(); }
 
-	bool OpenImage( CUtlBuffer* pData );
+	bool OpenImage( CUtlBuffer* pBuf );
 	void CloseImage( void );
 
 	// iterates to the next frame, returns true if we have just looped
@@ -63,6 +74,25 @@ private:
 	uint8* m_pPrevFrameBuffer;
 	int m_iSelectedFrame;
 	double m_dIterateTime;
+};
+
+struct AnimatedAvatarImagePair_t
+{
+	AnimatedAvatarImagePair_t( void )
+		: m_pBuffer( NULL ), m_textureIDs( CUtlArray< int, ANIMATED_AVATAR_MAX_FRAME_COUNT >() ), m_dLastUsedTimestamp( 0.0 ) {}
+	AnimatedAvatarImagePair_t( CUtlBuffer* pBuf, CUtlArray< int, ANIMATED_AVATAR_MAX_FRAME_COUNT > textureIDs )
+		: m_pBuffer( pBuf ), m_textureIDs( textureIDs ), m_dLastUsedTimestamp( Plat_FloatTime() ) {}
+
+	bool IsUnused( void ) const
+	{
+		return ( m_dLastUsedTimestamp + ANIMATED_AVATAR_CACHE_UNUSED_TIME ) < Plat_FloatTime();
+	}
+
+	CUtlBuffer* m_pBuffer;
+	CUtlArray< int, ANIMATED_AVATAR_MAX_FRAME_COUNT > m_textureIDs;
+	// this is used to deallocate least used cached avatars to prevent leaking, timestamp should be updated
+	// every time the avatar is drawn
+	double m_dLastUsedTimestamp;
 };
 
 //=============================================================================
@@ -205,7 +235,7 @@ private:
 	CHudTexture *m_pFriendIcon;
 	CSteamID	m_SteamID;
 
-	const char* m_pszAvatarUrl;
+	CUtlString m_strAvatarUrl;
 	bool m_bAnimating;
 	CGIFHelper m_animatedImage;
 
@@ -222,19 +252,15 @@ private:
 	//=============================================================================
 	// HPE_END
 	//=============================================================================
-
+	
 	static CUtlMap< AvatarImagePair_t, int > s_staticAvatarCache;
-	static CUtlMap< const char*, CUtlArray< int, ANIMATED_AVATAR_MAX_FRAME_COUNT > > s_animatedAvatarCache;
+	static CUtlMap< CUtlString, AnimatedAvatarImagePair_t > s_animatedAvatarCache;
 	static bool m_sbInitializedAvatarCache;
-
 	CCallback<CAvatarImage, PersonaStateChange_t, false> m_sPersonaStateChangedCallback;
 	void OnPersonaStateChanged( PersonaStateChange_t *info );
 
 	CCallResult<CAvatarImage, EquippedProfileItems_t> m_sEquippedProfileItemsRequestedCallback;
 	void OnEquippedProfileItemsRequested( EquippedProfileItems_t *pInfo, bool bIOFailure );
-
-	CCallback<CAvatarImage, EquippedProfileItemsChanged_t, false> m_sEquippedProfileItemsChangedCallback;
-	void OnEquippedProfileItemsChanged( EquippedProfileItemsChanged_t *pInfo );
 
 	CCallResult<CAvatarImage, HTTPRequestCompleted_t> m_sHTTPRequestCompletedCallback;
 	void OnHTTPRequestCompleted( HTTPRequestCompleted_t *pInfo, bool bIOFailure );

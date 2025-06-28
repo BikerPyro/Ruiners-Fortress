@@ -19,7 +19,7 @@
 DECLARE_BUILD_FACTORY( CAvatarImagePanel );
 
 CUtlMap< AvatarImagePair_t, int > CAvatarImage::s_staticAvatarCache; // cache of steam id's to textureids to use for static avatars
-CUtlMap< const char*, CUtlArray< int, ANIMATED_AVATAR_MAX_FRAME_COUNT > > CAvatarImage::s_animatedAvatarCache; // cache of avatar URLs to textureids to use for animated avatars
+CUtlMap< CUtlString, AnimatedAvatarImagePair_t > CAvatarImage::s_animatedAvatarCache; // cache of avatar URLs to textureids to use for animated avatars
 bool CAvatarImage::m_sbInitializedAvatarCache = false;
 
 ConVar cl_animated_avatars( "cl_animated_avatars", "1", FCVAR_ARCHIVE, "Enable animated avatars" );
@@ -28,8 +28,7 @@ ConVar cl_animated_avatars( "cl_animated_avatars", "1", FCVAR_ARCHIVE, "Enable a
 // Purpose:
 //-----------------------------------------------------------------------------
 CAvatarImage::CAvatarImage( void )
-: m_sPersonaStateChangedCallback( this, &CAvatarImage::OnPersonaStateChanged ),
-m_sEquippedProfileItemsChangedCallback( this, &CAvatarImage::OnEquippedProfileItemsChanged )
+: m_sPersonaStateChangedCallback( this, &CAvatarImage::OnPersonaStateChanged )
 {
 	ClearAvatarSteamID();
 	m_pFriendIcon = NULL;
@@ -67,7 +66,7 @@ m_sEquippedProfileItemsChangedCallback( this, &CAvatarImage::OnEquippedProfileIt
 	{
 		m_sbInitializedAvatarCache = true;
 		SetDefLessFunc( s_staticAvatarCache );
-		SetDefLessFunc( s_animatedAvatarCache );
+		s_animatedAvatarCache.SetLessFunc( UtlStringLessFunc );
 	}
 }
 
@@ -97,10 +96,6 @@ bool CAvatarImage::SetAvatarSteamID( CSteamID steamIDUser, EAvatarSize avatarSiz
 	m_bLoadPending = true;
 
 	m_sPersonaStateChangedCallback.Register( this, &CAvatarImage::OnPersonaStateChanged );
-	m_sEquippedProfileItemsChangedCallback.Register( this, &CAvatarImage::OnEquippedProfileItemsChanged );
-
-	SteamAPICall_t hRequestItemsCall = steamapicontext->SteamFriends()->RequestEquippedProfileItems( m_SteamID );
-	m_sEquippedProfileItemsRequestedCallback.Set( hRequestItemsCall, this, &CAvatarImage::OnEquippedProfileItemsRequested );
 
 	if ( m_bSetDesiredSize )
 	{
@@ -133,23 +128,7 @@ void CAvatarImage::OnPersonaStateChanged( PersonaStateChange_t *info )
 //-----------------------------------------------------------------------------
 void CAvatarImage::OnEquippedProfileItemsRequested( EquippedProfileItems_t* pInfo, bool bIOFailure )
 {
-	m_bValid = false;
-	m_bLoadPending = true;
-
-	UpdateAvatarImageSize();
-	LoadAvatarImage();
-}
-
-//-----------------------------------------------------------------------------
-// Purpose: Called when somebody changes their equipped profile items
-//-----------------------------------------------------------------------------
-void CAvatarImage::OnEquippedProfileItemsChanged( EquippedProfileItemsChanged_t* pInfo )
-{
-	if( pInfo->m_steamID == m_SteamID )
-	{
-		SteamAPICall_t hRequestItemsCall = steamapicontext->SteamFriends()->RequestEquippedProfileItems( m_SteamID );
-		m_sEquippedProfileItemsRequestedCallback.Set( hRequestItemsCall, this, &CAvatarImage::OnEquippedProfileItemsRequested );
-	}
+	LoadAnimatedAvatar();
 }
 
 //-----------------------------------------------------------------------------
@@ -157,26 +136,27 @@ void CAvatarImage::OnEquippedProfileItemsChanged( EquippedProfileItemsChanged_t*
 //-----------------------------------------------------------------------------
 void CAvatarImage::OnHTTPRequestCompleted( HTTPRequestCompleted_t* pInfo, bool bIOFailure )
 {
-	CUtlBuffer buf;
-	buf.EnsureCapacity( pInfo->m_unBodySize );
-	buf.SeekPut( CUtlBuffer::SEEK_HEAD, pInfo->m_unBodySize );
-	Verify( SteamHTTP()->GetHTTPResponseBodyData( pInfo->m_hRequest, ( uint8* )buf.Base(), pInfo->m_unBodySize ) );
+	CUtlBuffer* buf = new CUtlBuffer;
+	buf->EnsureCapacity( pInfo->m_unBodySize );
+	buf->SeekPut( CUtlBuffer::SEEK_HEAD, pInfo->m_unBodySize );
+	Verify( SteamHTTP()->GetHTTPResponseBodyData( pInfo->m_hRequest, ( uint8* )buf->Base(), pInfo->m_unBodySize ) );
 
-	m_animatedImage.OpenImage( &buf );
-
-	m_bAnimating = false;
+	if( !m_animatedImage.OpenImage( buf ) )
+	{
+		SteamHTTP()->ReleaseHTTPRequest( pInfo->m_hRequest );
+		return;
+	}
 
 	// Construct textures from the gif data
-	int iFrame = 0;
 	do
 	{
-		if( iFrame >= ANIMATED_AVATAR_MAX_FRAME_COUNT )
+		if( m_animatedImage.GetSelectedFrame() >= ANIMATED_AVATAR_MAX_FRAME_COUNT )
 		{
 			// too many frames, stop processing
 			break;
 		}
 
-		m_textureIDs[ iFrame ] = vgui::surface()->CreateNewTextureID( true );
+		m_textureIDs[ m_animatedImage.GetSelectedFrame() ] = vgui::surface()->CreateNewTextureID( true );
 
 		int iWide, iTall;
 		m_animatedImage.GetScreenSize( iWide, iTall );
@@ -184,18 +164,35 @@ void CAvatarImage::OnHTTPRequestCompleted( HTTPRequestCompleted_t* pInfo, bool b
 		m_animatedImage.GetRGBA( &pDest );
 
 		// bind RGBA data to the texture
-		g_pMatSystemSurface->DrawSetTextureRGBAEx2( m_textureIDs[ iFrame ], pDest, iWide, iTall, IMAGE_FORMAT_RGBA8888, true );
+		g_pMatSystemSurface->DrawSetTextureRGBAEx2( m_textureIDs[ m_animatedImage.GetSelectedFrame() ], pDest, iWide, iTall, IMAGE_FORMAT_RGBA8888, true );
 		delete[] pDest;
-
-		iFrame++;
 	} while( !m_animatedImage.NextFrame() );
 
 	// cache our texture IDs
-	s_animatedAvatarCache.Insert( m_pszAvatarUrl, m_textureIDs );
+	s_animatedAvatarCache.Insert( m_strAvatarUrl, AnimatedAvatarImagePair_t( buf, m_textureIDs ) );
+
+	// if we are over cache size limit deallocate unused avatars
+	if( s_animatedAvatarCache.Count() > ANIMATED_AVATAR_CACHE_MAX_COUNT )
+	{
+		FOR_EACH_MAP_BACK( s_animatedAvatarCache, i )
+		{
+			AnimatedAvatarImagePair_t& pair = s_animatedAvatarCache[ i ];
+			if( pair.IsUnused() )
+			{
+				delete pair.m_pBuffer;
+				FOR_EACH_ARRAY( pair.m_textureIDs, j )
+				{
+					if( pair.m_textureIDs[ j ] != -1 )
+						vgui::surface()->DestroyTextureID( pair.m_textureIDs[ j ] );
+				}
+				s_animatedAvatarCache.RemoveAt( i );
+			}
+		}
+	}
 
 	m_bAnimating = true;
 
-	steamapicontext->SteamHTTP()->ReleaseHTTPRequest( pInfo->m_hRequest );
+	SteamHTTP()->ReleaseHTTPRequest( pInfo->m_hRequest );
 }
 
 void CAvatarImage::UpdateAvatarImageSize()
@@ -219,20 +216,26 @@ void CAvatarImage::UpdateAvatarImageSize()
 //-----------------------------------------------------------------------------
 void CAvatarImage::LoadAnimatedAvatar()
 {
-	if( SteamHTTP() && SteamFriends()->BHasEquippedProfileItem( m_SteamID, k_ECommunityProfileItemType_AnimatedAvatar ) )
+	if( SteamHTTP() && SteamFriends() && SteamFriends()->BHasEquippedProfileItem( m_SteamID, k_ECommunityProfileItemType_AnimatedAvatar ) )
 	{
-		m_pszAvatarUrl = SteamFriends()->GetProfileItemPropertyString( m_SteamID, k_ECommunityProfileItemType_AnimatedAvatar, k_ECommunityProfileItemProperty_ImageSmall );
+		m_strAvatarUrl = SteamFriends()->GetProfileItemPropertyString( m_SteamID, k_ECommunityProfileItemType_AnimatedAvatar, k_ECommunityProfileItemProperty_ImageSmall );
 
 		// See if we have this avatar cached already...
-		int iIndex = s_animatedAvatarCache.Find( m_pszAvatarUrl );
+		int iIndex = s_animatedAvatarCache.Find( m_strAvatarUrl );
 		if( iIndex != s_animatedAvatarCache.InvalidIndex() )
 		{
-			m_textureIDs = s_animatedAvatarCache[ iIndex ];
+			AnimatedAvatarImagePair_t& pair = s_animatedAvatarCache[ iIndex ];
+
+			// ensure the buffer's read ptr is at head
+			pair.m_pBuffer->SeekGet( CUtlBuffer::SEEK_HEAD, 0 );
+			m_animatedImage.OpenImage( pair.m_pBuffer );
+
+			m_textureIDs = pair.m_textureIDs;
 			m_bAnimating = true;
 			return;
 		}
 
-		HTTPRequestHandle hRequest = SteamHTTP()->CreateHTTPRequest( k_EHTTPMethodGET, m_pszAvatarUrl );
+		HTTPRequestHandle hRequest = SteamHTTP()->CreateHTTPRequest( k_EHTTPMethodGET, m_strAvatarUrl );
 		if( hRequest == INVALID_HTTPREQUEST_HANDLE )
 		{
 			return;
@@ -302,7 +305,10 @@ void CAvatarImage::LoadAvatarImage()
 	{
 		LoadStaticAvatar();
 		if( cl_animated_avatars.GetBool() )
-			LoadAnimatedAvatar();
+		{
+			SteamAPICall_t hRequestItemsCall = SteamFriends()->RequestEquippedProfileItems( m_SteamID );
+			m_sEquippedProfileItemsRequestedCallback.Set( hRequestItemsCall, this, &CAvatarImage::OnEquippedProfileItemsRequested );
+		}
 
 		if ( m_bValid )
 		{
@@ -384,6 +390,13 @@ void CAvatarImage::Paint( void )
 			m_animatedImage.NextFrame();
 
 		iTextureToDraw = m_textureIDs[ m_animatedImage.GetSelectedFrame() ];
+
+		int iCacheIndex = s_animatedAvatarCache.Find( m_strAvatarUrl );
+		if( iCacheIndex != s_animatedAvatarCache.InvalidIndex() )
+		{
+			// update last used timestamp
+			s_animatedAvatarCache[ iCacheIndex ].m_dLastUsedTimestamp = Plat_FloatTime();
+		}
 	}
 
 	if ( m_bValid )
@@ -631,7 +644,7 @@ int CGIFHelper::ReadData( GifFileType* pFile, GifByteType* pBuffer, int cubBuffe
 	return nBytesToRead;
 }
 
-bool CGIFHelper::OpenImage( CUtlBuffer* pData )
+bool CGIFHelper::OpenImage( CUtlBuffer* pBuf )
 {
 	if( m_pImage )
 	{
@@ -639,7 +652,7 @@ bool CGIFHelper::OpenImage( CUtlBuffer* pData )
 	}
 
 	int nError;
-	m_pImage = DGifOpen( pData, ReadData, &nError );
+	m_pImage = DGifOpen( pBuf, ReadData, &nError );
 	if( !m_pImage )
 	{
 		DevWarning( "[CGIFHelper] Failed to open GIF image: %s\n", GifErrorString( nError ) );
@@ -685,12 +698,10 @@ bool CGIFHelper::NextFrame( void )
 
 	m_iSelectedFrame++;
 
-	bool bLooped = false;
 	if( m_iSelectedFrame >= m_pImage->ImageCount )
 	{
 		// Loop
 		m_iSelectedFrame = 0;
-		bLooped = true;
 	}
 
 	GraphicsControlBlock gcb;
@@ -699,7 +710,7 @@ bool CGIFHelper::NextFrame( void )
 		m_dIterateTime = ( gcb.DelayTime * 0.01 ) + Plat_FloatTime();
 	}
 
-	return bLooped;
+	return m_iSelectedFrame == 0;
 }
 
 void CGIFHelper::GetRGBA( uint8** ppOutFrameBuffer )
