@@ -85,6 +85,8 @@ bool CGIFHelper::NextFrame( void )
 
 void CGIFHelper::GetRGBA( uint8** ppOutFrameBuffer )
 {
+	VPROF( "CGIFHelper::GetRGBA" );
+
 	if( !m_pImage )
 		return;
 

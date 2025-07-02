@@ -137,6 +137,8 @@ void CAvatarImage::OnEquippedProfileItemsRequested( EquippedProfileItems_t* pInf
 //-----------------------------------------------------------------------------
 void CAvatarImage::OnHTTPRequestCompleted( HTTPRequestCompleted_t* pInfo, bool bIOFailure )
 {
+	VPROF( "CAvatarImage::OnHTTPRequestCompleted" );
+
 	CUtlBuffer buf;
 	buf.EnsureCapacity( pInfo->m_unBodySize );
 	buf.SeekPut( CUtlBuffer::SEEK_HEAD, pInfo->m_unBodySize );
@@ -152,19 +154,11 @@ void CAvatarImage::OnHTTPRequestCompleted( HTTPRequestCompleted_t* pInfo, bool b
 		return;
 	}
 
-	// Construct textures from the gif data
+	// initialize texture id tree, we will setup the textures on-demand since
+	// loading them all at once can cause lag
 	do
 	{
-		m_pAnimatedAvatar->m_textureIDs.Insert( vgui::surface()->CreateNewTextureID( true ) );
-
-		int iWide, iTall;
-		m_pAnimatedAvatar->m_animationHelper.GetScreenSize( iWide, iTall );
-		uint8* pDest = new uint8[ iWide * iTall * 4 ];
-		m_pAnimatedAvatar->m_animationHelper.GetRGBA( &pDest );
-
-		// bind RGBA data to the texture
-		g_pMatSystemSurface->DrawSetTextureRGBAEx2( m_pAnimatedAvatar->m_textureIDs[ m_pAnimatedAvatar->m_animationHelper.GetSelectedFrame() ], pDest, iWide, iTall, IMAGE_FORMAT_RGBA8888, true);
-		delete[] pDest;
+		m_pAnimatedAvatar->m_textureIDs.AddToTail( -1 );
 	} while( !m_pAnimatedAvatar->m_animationHelper.NextFrame() );
 
 	// insert the avatar to cache
@@ -176,7 +170,7 @@ void CAvatarImage::OnHTTPRequestCompleted( HTTPRequestCompleted_t* pInfo, bool b
 		AnimatedAvatar_t*& pAvatar = s_animatedAvatarCache[ i ];
 		if( pAvatar->m_nRefCount <= 0 )
 		{
-			FOR_EACH_RBTREE_FAST( pAvatar->m_textureIDs, j )
+			FOR_EACH_VEC( pAvatar->m_textureIDs, j )
 			{
 				int& iTextureID = pAvatar->m_textureIDs[ j ];
 				if( iTextureID != -1 )
@@ -384,13 +378,27 @@ void CAvatarImage::Paint( void )
 	}
 
 	int iTextureID = m_iStaticTextureID;
-	// if we are an animated image, update the frame if needed
 	if ( m_pAnimatedAvatar && cl_animated_avatars.GetBool() )
 	{
+		// update the frame if needed
 		if( m_pAnimatedAvatar->m_animationHelper.ShouldIterateFrame() )
 			m_pAnimatedAvatar->m_animationHelper.NextFrame();
 
-		iTextureID = m_pAnimatedAvatar->m_textureIDs[ m_pAnimatedAvatar->m_animationHelper.GetSelectedFrame() ];
+		int& iFrameTexID = m_pAnimatedAvatar->m_textureIDs[ m_pAnimatedAvatar->m_animationHelper.GetSelectedFrame() ];
+		if( iFrameTexID == -1 )
+		{
+			// init the texture for the current frame
+			iFrameTexID = vgui::surface()->CreateNewTextureID( true );
+
+			int iWide, iTall;
+			m_pAnimatedAvatar->m_animationHelper.GetScreenSize( iWide, iTall );
+			uint8* pDest = ( uint8* )stackalloc( iWide * iTall * 4 );
+			m_pAnimatedAvatar->m_animationHelper.GetRGBA( &pDest );
+
+			// bind RGBA data to the texture
+			g_pMatSystemSurface->DrawSetTextureRGBAEx2( iFrameTexID, pDest, iWide, iTall, IMAGE_FORMAT_RGBA8888, true );
+		}
+		iTextureID = iFrameTexID;
 	}
 
 	if ( m_bValid )

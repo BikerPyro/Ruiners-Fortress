@@ -7,6 +7,10 @@
 typedef struct GifFileType GifFileType;
 typedef unsigned char GifByteType;
 
+typedef void ( *GetFramesRGBACallbackFn )( uint8**, int );
+// uint8** - array of frame buffers as RGBA
+// int - frame count
+
 //-----------------------------------------------------------------------------
 // Purpose: Simple utility for decoding GIFs
 //-----------------------------------------------------------------------------

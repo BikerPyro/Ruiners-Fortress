@@ -29,10 +29,10 @@
 
 struct AnimatedAvatar_t
 {
-	AnimatedAvatar_t( void ) : m_nRefCount( 1 ) { SetDefLessFunc( m_textureIDs ); }
+	AnimatedAvatar_t( void ) : m_nRefCount( 1 ) {}
 
 	CGIFHelper m_animationHelper;
-	CUtlRBTree< int > m_textureIDs;
+	CUtlVector< int > m_textureIDs;
 	// count of references to this object to know when to deallocate; we cant use CRefPtr since the cache is always referencing us
 	// remember to adjust this accordingly
 	int m_nRefCount;
