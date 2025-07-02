@@ -28,19 +28,6 @@
 // size of the standard avatar icon (unless override by SetAvatarSize)
 #define DEFAULT_AVATAR_SIZE		(32)
 
-#define ANIMATED_AVATAR_MAX_FRAME_COUNT (256)
-
-// Steamworks's max file size for animated avatars is 2MB, we need to be careful to
-// not run out of memory especially on 32-bit as cache size can grow fast.
-// We do frequent checks to deallocate unused avatars when we go past cache max size limit
-#ifdef PLATFORM_64BITS
-#define ANIMATED_AVATAR_CACHE_MAX_COUNT (128)
-#define ANIMATED_AVATAR_CACHE_UNUSED_TIME (30.0) // in seconds
-#else
-#define ANIMATED_AVATAR_CACHE_MAX_COUNT (64)
-#define ANIMATED_AVATAR_CACHE_UNUSED_TIME (10.0) // in seconds
-#endif //PLATFORM_64BITS
-
 typedef struct GifFileType GifFileType;
 typedef unsigned char GifByteType;
 
@@ -76,23 +63,15 @@ private:
 	double m_dIterateTime;
 };
 
-struct AnimatedAvatarImagePair_t
+struct AnimatedAvatar_t
 {
-	AnimatedAvatarImagePair_t( void )
-		: m_pBuffer( NULL ), m_textureIDs( CUtlArray< int, ANIMATED_AVATAR_MAX_FRAME_COUNT >() ), m_dLastUsedTimestamp( 0.0 ) {}
-	AnimatedAvatarImagePair_t( CUtlBuffer* pBuf, CUtlArray< int, ANIMATED_AVATAR_MAX_FRAME_COUNT > textureIDs )
-		: m_pBuffer( pBuf ), m_textureIDs( textureIDs ), m_dLastUsedTimestamp( Plat_FloatTime() ) {}
+	AnimatedAvatar_t( void ) : m_nRefCount( 1 ) { SetDefLessFunc( m_textureIDs ); }
 
-	bool IsUnused( void ) const
-	{
-		return ( m_dLastUsedTimestamp + ANIMATED_AVATAR_CACHE_UNUSED_TIME ) < Plat_FloatTime();
-	}
-
-	CUtlBuffer* m_pBuffer;
-	CUtlArray< int, ANIMATED_AVATAR_MAX_FRAME_COUNT > m_textureIDs;
-	// this is used to deallocate least used cached avatars to prevent leaking, timestamp should be updated
-	// every time the avatar is drawn
-	double m_dLastUsedTimestamp;
+	CGIFHelper m_animationHelper;
+	CUtlRBTree< int > m_textureIDs;
+	// count of references to this object to know when to deallocate; we cant use CRefPtr since the cache is always referencing us
+	// remember to adjust this accordingly
+	int m_nRefCount;
 };
 
 //=============================================================================
@@ -220,8 +199,7 @@ private:
 	void LoadAvatarImage();
 
 	Color m_Color;
-	// NOTE: index 0 is ensured to always be valid (texture ID of either static avatar or first animation frame)
-	CUtlArray< int, ANIMATED_AVATAR_MAX_FRAME_COUNT > m_textureIDs;
+	int m_iStaticTextureID; // texture ID of the static version of the avatar
 	int m_nX, m_nY;
 	int m_wide, m_tall;
 	int	m_avatarWide, m_avatarTall;
@@ -236,8 +214,7 @@ private:
 	CSteamID	m_SteamID;
 
 	CUtlString m_strAvatarUrl;
-	bool m_bAnimating;
-	CGIFHelper m_animatedImage;
+	AnimatedAvatar_t* m_pAnimatedAvatar;
 
 	//=============================================================================
 	// HPE_BEGIN:
@@ -254,7 +231,7 @@ private:
 	//=============================================================================
 	
 	static CUtlMap< AvatarImagePair_t, int > s_staticAvatarCache;
-	static CUtlMap< CUtlString, AnimatedAvatarImagePair_t > s_animatedAvatarCache;
+	static CUtlMap< CUtlString, AnimatedAvatar_t* > s_animatedAvatarCache;
 	static bool m_sbInitializedAvatarCache;
 	CCallback<CAvatarImage, PersonaStateChange_t, false> m_sPersonaStateChangedCallback;
 	void OnPersonaStateChanged( PersonaStateChange_t *info );

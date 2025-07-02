@@ -19,7 +19,7 @@
 DECLARE_BUILD_FACTORY( CAvatarImagePanel );
 
 CUtlMap< AvatarImagePair_t, int > CAvatarImage::s_staticAvatarCache; // cache of steam id's to textureids to use for static avatars
-CUtlMap< CUtlString, AnimatedAvatarImagePair_t > CAvatarImage::s_animatedAvatarCache; // cache of avatar URLs to textureids to use for animated avatars
+CUtlMap< CUtlString, AnimatedAvatar_t* > CAvatarImage::s_animatedAvatarCache; // cache of avatar URLs to textureids to use for animated avatars
 bool CAvatarImage::m_sbInitializedAvatarCache = false;
 
 ConVar cl_animated_avatars( "cl_animated_avatars", "1", FCVAR_ARCHIVE, "Enable animated avatars" );
@@ -49,12 +49,14 @@ CAvatarImage::CAvatarImage( void )
 	m_bDrawFriend = true;
 
 	// [menglish] Default icon for avatar icons if there is no avatar icon for the player
-	m_textureIDs.FillWithValue( -1 );
+	m_iStaticTextureID = -1;
 
 	// set up friend icon
 	m_pFriendIcon = gHUD.GetIcon( "ico_friend_indicator_avatar" );
 
 	m_pDefaultImage = NULL;
+
+	m_pAnimatedAvatar = NULL;
 
 	SetAvatarSize(DEFAULT_AVATAR_SIZE, DEFAULT_AVATAR_SIZE);
 
@@ -136,12 +138,16 @@ void CAvatarImage::OnEquippedProfileItemsRequested( EquippedProfileItems_t* pInf
 //-----------------------------------------------------------------------------
 void CAvatarImage::OnHTTPRequestCompleted( HTTPRequestCompleted_t* pInfo, bool bIOFailure )
 {
-	CUtlBuffer* buf = new CUtlBuffer;
-	buf->EnsureCapacity( pInfo->m_unBodySize );
-	buf->SeekPut( CUtlBuffer::SEEK_HEAD, pInfo->m_unBodySize );
-	Verify( SteamHTTP()->GetHTTPResponseBodyData( pInfo->m_hRequest, ( uint8* )buf->Base(), pInfo->m_unBodySize ) );
+	CUtlBuffer buf;
+	buf.EnsureCapacity( pInfo->m_unBodySize );
+	buf.SeekPut( CUtlBuffer::SEEK_HEAD, pInfo->m_unBodySize );
+	Verify( SteamHTTP()->GetHTTPResponseBodyData( pInfo->m_hRequest, ( uint8* )buf.Base(), pInfo->m_unBodySize ) );
 
-	if( !m_animatedImage.OpenImage( buf ) )
+	if( m_pAnimatedAvatar )
+		m_pAnimatedAvatar->m_nRefCount--;
+	m_pAnimatedAvatar = new AnimatedAvatar_t;
+
+	if( !m_pAnimatedAvatar->m_animationHelper.OpenImage( &buf ) )
 	{
 		SteamHTTP()->ReleaseHTTPRequest( pInfo->m_hRequest );
 		return;
@@ -150,47 +156,43 @@ void CAvatarImage::OnHTTPRequestCompleted( HTTPRequestCompleted_t* pInfo, bool b
 	// Construct textures from the gif data
 	do
 	{
-		if( m_animatedImage.GetSelectedFrame() >= ANIMATED_AVATAR_MAX_FRAME_COUNT )
-		{
-			// too many frames, stop processing
-			break;
-		}
-
-		m_textureIDs[ m_animatedImage.GetSelectedFrame() ] = vgui::surface()->CreateNewTextureID( true );
+		m_pAnimatedAvatar->m_textureIDs.Insert( vgui::surface()->CreateNewTextureID( true ) );
 
 		int iWide, iTall;
-		m_animatedImage.GetScreenSize( iWide, iTall );
+		m_pAnimatedAvatar->m_animationHelper.GetScreenSize( iWide, iTall );
 		uint8* pDest = new uint8[ iWide * iTall * 4 ];
-		m_animatedImage.GetRGBA( &pDest );
+		m_pAnimatedAvatar->m_animationHelper.GetRGBA( &pDest );
 
 		// bind RGBA data to the texture
-		g_pMatSystemSurface->DrawSetTextureRGBAEx2( m_textureIDs[ m_animatedImage.GetSelectedFrame() ], pDest, iWide, iTall, IMAGE_FORMAT_RGBA8888, true );
+		g_pMatSystemSurface->DrawSetTextureRGBAEx2( m_pAnimatedAvatar->m_textureIDs[ m_pAnimatedAvatar->m_animationHelper.GetSelectedFrame() ], pDest, iWide, iTall, IMAGE_FORMAT_RGBA8888, true);
 		delete[] pDest;
-	} while( !m_animatedImage.NextFrame() );
+	} while( !m_pAnimatedAvatar->m_animationHelper.NextFrame() );
 
-	// cache our texture IDs
-	s_animatedAvatarCache.Insert( m_strAvatarUrl, AnimatedAvatarImagePair_t( buf, m_textureIDs ) );
+	// insert the avatar to cache
+	s_animatedAvatarCache.Insert( m_strAvatarUrl, m_pAnimatedAvatar );
 
-	// if we are over cache size limit deallocate unused avatars
-	if( s_animatedAvatarCache.Count() > ANIMATED_AVATAR_CACHE_MAX_COUNT )
+	// deallocate unused avatars
+	FOR_EACH_MAP_FAST( s_animatedAvatarCache, i )
 	{
-		FOR_EACH_MAP_BACK( s_animatedAvatarCache, i )
+		AnimatedAvatar_t*& pAvatar = s_animatedAvatarCache[ i ];
+		if( pAvatar->m_nRefCount <= 0 )
 		{
-			AnimatedAvatarImagePair_t& pair = s_animatedAvatarCache[ i ];
-			if( pair.IsUnused() )
+			FOR_EACH_RBTREE_FAST( pAvatar->m_textureIDs, j )
 			{
-				delete pair.m_pBuffer;
-				FOR_EACH_ARRAY( pair.m_textureIDs, j )
+				int& iTextureID = pAvatar->m_textureIDs[ j ];
+				if( iTextureID != -1 )
 				{
-					if( pair.m_textureIDs[ j ] != -1 )
-						vgui::surface()->DestroyTextureID( pair.m_textureIDs[ j ] );
+					vgui::surface()->DestroyTextureID( iTextureID );
+					iTextureID = -1;
 				}
-				s_animatedAvatarCache.RemoveAt( i );
 			}
+			pAvatar->m_animationHelper.CloseImage();
+
+			s_animatedAvatarCache.RemoveAt( i );
+			delete pAvatar;
+			i--; // avoid skipping the next element
 		}
 	}
-
-	m_bAnimating = true;
 
 	SteamHTTP()->ReleaseHTTPRequest( pInfo->m_hRequest );
 }
@@ -224,14 +226,10 @@ void CAvatarImage::LoadAnimatedAvatar()
 		int iIndex = s_animatedAvatarCache.Find( m_strAvatarUrl );
 		if( iIndex != s_animatedAvatarCache.InvalidIndex() )
 		{
-			AnimatedAvatarImagePair_t& pair = s_animatedAvatarCache[ iIndex ];
-
-			// ensure the buffer's read ptr is at head
-			pair.m_pBuffer->SeekGet( CUtlBuffer::SEEK_HEAD, 0 );
-			m_animatedImage.OpenImage( pair.m_pBuffer );
-
-			m_textureIDs = pair.m_textureIDs;
-			m_bAnimating = true;
+			if( m_pAnimatedAvatar )
+				m_pAnimatedAvatar->m_nRefCount--;
+			m_pAnimatedAvatar = s_animatedAvatarCache[ iIndex ];
+			m_pAnimatedAvatar->m_nRefCount++;
 			return;
 		}
 
@@ -248,6 +246,11 @@ void CAvatarImage::LoadAnimatedAvatar()
 			return;
 		}
 		m_sHTTPRequestCompletedCallback.Set( hSendCall, this, &CAvatarImage::OnHTTPRequestCompleted );
+	}
+	else if( m_pAnimatedAvatar )
+	{
+		m_pAnimatedAvatar->m_nRefCount--;
+		m_pAnimatedAvatar = NULL;
 	}
 }
 
@@ -344,13 +347,13 @@ void CAvatarImage::InitFromRGBA( int iAvatar, const byte *rgba, int width, int h
 	int iTexIndex = s_staticAvatarCache.Find( AvatarImagePair_t( m_SteamID, iAvatar ) );
 	if ( iTexIndex == s_staticAvatarCache.InvalidIndex() )
 	{
-		m_textureIDs[ 0 ] = vgui::surface()->CreateNewTextureID(true);
-		g_pMatSystemSurface->DrawSetTextureRGBAEx2( m_textureIDs[ 0 ], rgba, width, height, IMAGE_FORMAT_RGBA8888, true );
+		m_iStaticTextureID = vgui::surface()->CreateNewTextureID(true);
+		g_pMatSystemSurface->DrawSetTextureRGBAEx2( m_iStaticTextureID, rgba, width, height, IMAGE_FORMAT_RGBA8888, true );
 		iTexIndex = s_staticAvatarCache.Insert( AvatarImagePair_t( m_SteamID, iAvatar ) );
-		s_staticAvatarCache[ iTexIndex ] = m_textureIDs[ 0 ];
+		s_staticAvatarCache[ iTexIndex ] = m_iStaticTextureID;
 	}
 	else
-		m_textureIDs[ 0 ] = s_staticAvatarCache[iTexIndex];
+		m_iStaticTextureID = s_staticAvatarCache[iTexIndex];
 	
 	m_bValid = true;
 }
@@ -381,27 +384,19 @@ void CAvatarImage::Paint( void )
 		LoadAvatarImage();
 	}
 
-	int iTextureToDraw = m_textureIDs[ 0 ];
-
+	int iTextureID = m_iStaticTextureID;
 	// if we are an animated image, update the frame if needed
-	if ( m_bAnimating )
+	if ( m_pAnimatedAvatar && cl_animated_avatars.GetBool() )
 	{
-		if( m_animatedImage.ShouldIterateFrame() )
-			m_animatedImage.NextFrame();
+		if( m_pAnimatedAvatar->m_animationHelper.ShouldIterateFrame() )
+			m_pAnimatedAvatar->m_animationHelper.NextFrame();
 
-		iTextureToDraw = m_textureIDs[ m_animatedImage.GetSelectedFrame() ];
-
-		int iCacheIndex = s_animatedAvatarCache.Find( m_strAvatarUrl );
-		if( iCacheIndex != s_animatedAvatarCache.InvalidIndex() )
-		{
-			// update last used timestamp
-			s_animatedAvatarCache[ iCacheIndex ].m_dLastUsedTimestamp = Plat_FloatTime();
-		}
+		iTextureID = m_pAnimatedAvatar->m_textureIDs[ m_pAnimatedAvatar->m_animationHelper.GetSelectedFrame() ];
 	}
 
 	if ( m_bValid )
 	{
-		vgui::surface()->DrawSetTexture( iTextureToDraw );
+		vgui::surface()->DrawSetTexture( iTextureID );
 		vgui::surface()->DrawSetColor( m_Color );
 		vgui::surface()->DrawTexturedRect(posX, posY, posX + m_avatarWide, posY + m_avatarTall);
 	}
