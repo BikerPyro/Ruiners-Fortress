@@ -154,7 +154,7 @@ void CAvatarImage::OnHTTPRequestCompleted( HTTPRequestCompleted_t* pInfo, bool b
 
 	uint32 unAvatarUrl = ( uint32 )pInfo->m_ulContextValue;
 
-	// see if since the time we started the request did the avatar get created
+	// did the avatar get created since we started the request?
 	int iIndex = s_animatedAvatarCache.Find( unAvatarUrl );
 	if ( iIndex != s_animatedAvatarCache.InvalidIndex() )
 	{
@@ -212,7 +212,6 @@ void CAvatarImage::LoadAnimatedAvatar()
 {
 	if ( !SteamHTTP() || !SteamFriends() || !SteamFriends()->BHasEquippedProfileItem( m_SteamID, k_ECommunityProfileItemType_AnimatedAvatar ) )
 	{
-		m_pAnimatedAvatar = NULL;
 		return;
 	}
 
@@ -296,6 +295,7 @@ void CAvatarImage::LoadAvatarImage()
 	// attempt to retrieve the avatar image from Steam
 	if ( m_bLoadPending && steamapicontext->SteamFriends() && steamapicontext->SteamUtils() && gpGlobals->curtime >= m_fNextLoadTime )
 	{
+		m_pAnimatedAvatar = NULL;
 		LoadStaticAvatar();
 		if( cl_animated_avatars.GetBool() )
 		{
