@@ -169,7 +169,7 @@ void CAvatarImage::OnHTTPRequestCompleted( HTTPRequestCompleted_t* pInfo, bool b
 	Verify( SteamHTTP()->GetHTTPResponseBodyData( pInfo->m_hRequest, ( uint8 * )buf.Base(), pInfo->m_unBodySize ) );
 
 	CAnimatedAvatar *pAvatar = new CAnimatedAvatar;
-	if ( !pAvatar->m_animationHelper.OpenImage( &buf ) )
+	if ( !pAvatar->m_gif.OpenImage( buf ) )
 	{
 		delete pAvatar;
 		SteamHTTP()->ReleaseHTTPRequest( pInfo->m_hRequest );
@@ -178,7 +178,7 @@ void CAvatarImage::OnHTTPRequestCompleted( HTTPRequestCompleted_t* pInfo, bool b
 
 	// create texture id tree; we will lazy initialize the actual textures when it's time to draw ( see Paint method )
 	// since ->GetRGBA calls are somewhat expensive and when called on all frames at once might cause stutters
-	pAvatar->m_textureIDs.EnsureCount( pAvatar->m_animationHelper.GetFrameCount() );
+	pAvatar->m_textureIDs.EnsureCount( pAvatar->m_gif.GetFrameCount() );
 	pAvatar->m_textureIDs.FillWithValue( -1 );
 	pAvatar->m_unUrlHashed = unAvatarUrl;
 
@@ -377,25 +377,33 @@ void CAvatarImage::Paint( void )
 	int iTextureID = m_iStaticTextureID;
 	if ( m_pAnimatedAvatar.IsValid() && cl_animated_avatars.GetBool() )
 	{
+		bool bMarkForDeletion = false;
 		// update the frame if needed
-		if( m_pAnimatedAvatar->m_animationHelper.ShouldIterateFrame() )
-			m_pAnimatedAvatar->m_animationHelper.NextFrame();
+		if ( m_pAnimatedAvatar->m_gif.ShouldIterateFrame() && m_pAnimatedAvatar->m_gif.NextFrame() )
+		{
+			bMarkForDeletion = true;
+		}
 
-		int& iFrameTexID = m_pAnimatedAvatar->m_textureIDs[ m_pAnimatedAvatar->m_animationHelper.GetSelectedFrame() ];
-		if( iFrameTexID == -1 )
+		int &iFrameTexID = m_pAnimatedAvatar->m_textureIDs[ m_pAnimatedAvatar->m_gif.GetSelectedFrame() ];
+		if ( iFrameTexID == -1 )
 		{
 			// init the texture for the current frame
 			iFrameTexID = vgui::surface()->CreateNewTextureID( true );
 
-			int iWide, iTall;
-			m_pAnimatedAvatar->m_animationHelper.GetScreenSize( iWide, iTall );
-			uint8* pDest = ( uint8* )stackalloc( iWide * iTall * 4 );
-			m_pAnimatedAvatar->m_animationHelper.GetRGBA( pDest );
+			int nWide, nTall;
+			uint8 *pubDest = ( uint8 * )stackalloc( m_pAnimatedAvatar->m_gif.FrameSize( IMAGE_FORMAT_DXT1_RUNTIME, nWide, nTall ) );
+			m_pAnimatedAvatar->m_gif.FrameData( IMAGE_FORMAT_DXT1_RUNTIME, pubDest );
 
 			// bind RGBA data to the texture
-			g_pMatSystemSurface->DrawSetTextureRGBAEx2( iFrameTexID, pDest, iWide, iTall, IMAGE_FORMAT_RGBA8888, true );
+			g_pMatSystemSurface->DrawSetTextureRGBAEx2( iFrameTexID, pubDest, nWide, nTall, IMAGE_FORMAT_DXT1_RUNTIME, true );
 		}
 		iTextureID = iFrameTexID;
+
+		if ( bMarkForDeletion )
+		{
+			// no longer need to store frame data in CGIFHelper when we copied all the frames to the textures
+			m_pAnimatedAvatar->m_gif.CloseImage( true );
+		}
 	}
 
 	if ( m_bValid )
@@ -501,7 +509,6 @@ void CAvatarImage::CAnimatedAvatar::Release( void )
 			iTextureID = -1;
 		}
 	}
-	m_animationHelper.CloseImage();
 	s_animatedAvatarCache.Remove( m_unUrlHashed );
 	delete this;
 }

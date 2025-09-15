@@ -156,7 +156,7 @@ private:
 	public:
 		CAnimatedAvatar( void ) : m_unUrlHashed( 0 ), m_nRefCount( 0 ) {}
 
-		CGIFHelper m_animationHelper;
+		CGIFHelper m_gif;
 		CUtlVector< int > m_textureIDs;
 
 		uint32 m_unUrlHashed;
