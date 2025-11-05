@@ -84,16 +84,6 @@ void cc_tf_safemode_toggle( IConVar *pConVar, const char *pOldString, float flOl
 	}
 }
 
-void cc_tf_mainmenu_match_panel_type( IConVar *pConVar, const char *pOldString, float flOldValue )
-{
-	CHudMainMenuOverride *pMMOverride = (CHudMainMenuOverride*)( gViewPortInterface->FindPanelByName( PANEL_MAINMENUOVERRIDE ) );
-	if ( pMMOverride )
-	{
-		pMMOverride->UpdateRankPanelType();
-	}
-}
-
-
 ConVar tf_recent_achievements( "tf_recent_achievements", "0", FCVAR_ARCHIVE );
 ConVar tf_find_a_match_hint_viewed( "tf_find_a_match_hint_viewed", "0", FCVAR_ARCHIVE );
 ConVar tf_training_has_prompted_for_training( "tf_training_has_prompted_for_training", "0", FCVAR_ARCHIVE, "Whether the user has been prompted for training" );
@@ -106,7 +96,6 @@ ConVar cl_mainmenu_operation_motd_start( "cl_mainmenu_operation_motd_start", "0"
 ConVar cl_mainmenu_operation_motd_reset( "cl_mainmenu_operation_motd_reset", "0", FCVAR_ARCHIVE | FCVAR_HIDDEN );
 ConVar cl_mainmenu_safemode( "cl_mainmenu_safemode", "0", FCVAR_NONE, "Enable safe mode", cc_tf_safemode_toggle );
 ConVar cl_mainmenu_updateglow( "cl_mainmenu_updateglow", "1", FCVAR_ARCHIVE | FCVAR_HIDDEN );
-ConVar tf_mainmenu_match_panel_type( "tf_mainmenu_match_panel_type", "7", FCVAR_ARCHIVE | FCVAR_HIDDEN, "The match group data to show on the main menu", cc_tf_mainmenu_match_panel_type );
 
 void cc_promotional_codes_button_changed( IConVar *pConVar, const char *pOldString, float flOldValue )
 {
@@ -374,8 +363,6 @@ void CHudMainMenuOverride::FireGameEvent( IGameEvent *event )
 		m_nLastMOTDRequestAt = CRTime::RTime32TimeCur();
 
 		// Load the store info, so we can display the current special
-
-		UpdateRankPanelVisibility();
 	}
 	else if ( Q_strcmp( type, "item_schema_initialized" ) == 0 )
 	{
@@ -646,9 +633,6 @@ void CHudMainMenuOverride::ApplySchemeSettings( IScheme *scheme )
 	ScheduleTrainingCheck( false );
 
 	PerformKeyRebindings();
-
-	GetMMDashboard();
-	GetCompRanksTooltip();
 }
 
 //-----------------------------------------------------------------------------
@@ -760,7 +744,7 @@ void CHudMainMenuOverride::LoadCharacterImageFile( void )
 				const char* text = pCharacter->GetString( "store_text" );
 				if ( text )
 				{
-					StartHighlightAnimation( MMHA_STORE )->SetDialogVariable( "highlighttext", g_pVGuiLocalize->Find( text ) );
+					return;
 				}
 			}
 
@@ -779,16 +763,16 @@ void CHudMainMenuOverride::LoadMenuEntries( void )
 {
 	KeyValuesAD datafile("GameMenu");
 	datafile->UsesEscapeSequences( true );	// VGUI uses escape sequences
-	bool bLoaded = datafile->LoadFromFile( g_pFullFileSystem, "Resource/GameMenu.res", "custom_mod" );
+	bool bLoaded = datafile->LoadFromFile( g_pFullFileSystem, "Resource/GameMenuOld.res", "custom_mod" );
 	if ( !bLoaded )
 	{
-		bLoaded = datafile->LoadFromFile( g_pFullFileSystem, "Resource/GameMenu.res", "vgui" );
+		bLoaded = datafile->LoadFromFile( g_pFullFileSystem, "Resource/GameMenuOld.res", "vgui" );
 		if ( !bLoaded )
 		{
 			// only allow to load loose files when using insecure mode
 			if ( CommandLine()->FindParm( "-insecure" ) )
 			{
-				bLoaded = datafile->LoadFromFile( g_pFullFileSystem, "Resource/GameMenu.res" );
+				bLoaded = datafile->LoadFromFile( g_pFullFileSystem, "Resource/GameMenuOld.res" );
 			}
 		}
 	}
@@ -949,8 +933,6 @@ void CHudMainMenuOverride::PerformLayout( void )
 	}
 
 	m_pEventPromoContainer->SetVisible(false);
-
-	UpdateRankPanelVisibility();
 }
 
 
@@ -1447,7 +1429,7 @@ void CHudMainMenuOverride::SetMOTDVisible( bool bVisible )
 		UpdateMOTD( false );
 
 		// Clear MOTD button.
-		SetMOTDButtonVisible( true );
+		SetMOTDButtonVisible( false );
 		SetNotificationsPanelVisible( false );
 		//SetWatchStreamVisible( false );
 		//SetNotificationsButtonVisible( false );
@@ -1744,25 +1726,6 @@ bool CHudMainMenuOverride::IsVisible( void )
 }
 
 //-----------------------------------------------------------------------------
-// Purpose:
-//-----------------------------------------------------------------------------
-CExplanationPopup* CHudMainMenuOverride::StartHighlightAnimation( mm_highlight_anims iAnim )
-{
-	switch( iAnim )
-	{
-		case MMHA_TUTORIAL:		return ShowDashboardExplanation( "TutorialHighlight" );
-		case MMHA_PRACTICE:		return ShowDashboardExplanation( "PracticeHighlight" );
-		case MMHA_NEWUSERFORUM:	return ShowDashboardExplanation( "NewUserForumHighlight" );
-		case MMHA_OPTIONS:		return ShowDashboardExplanation( "OptionsHighlightPanel" );
-		case MMHA_LOADOUT:		return ShowDashboardExplanation( "LoadoutHighlightPanel" );
-		case MMHA_STORE:		return ShowDashboardExplanation( "StoreHighlightPanel" );
-	}
-
-	Assert( false );
-	return NULL;
-}
-
-//-----------------------------------------------------------------------------
 // Purpose: Make the glows behind the update buttons stop pulsing
 //-----------------------------------------------------------------------------
 void CHudMainMenuOverride::StopUpdateGlow()
@@ -1784,25 +1747,6 @@ void CHudMainMenuOverride::StopUpdateGlow()
 			pUpdateBackground->SetControlVisible( "ViewWarButtonGlow", false, true );
 		}
 	}
-}
-
-//-----------------------------------------------------------------------------
-// Purpose: Show or hide the rank panels if the GC is connected
-//-----------------------------------------------------------------------------
-void CHudMainMenuOverride::UpdateRankPanelVisibility()
-{
-	bool bConnectedToGC = GTFGCClientSystem()->BConnectedtoGC();
-
-	m_pRankPanel->SetVisible( bConnectedToGC );
-	m_pRankModelPanel->SetVisible( bConnectedToGC );
-	SetControlVisible( "CycleRankTypeButton", bConnectedToGC );
-	SetControlVisible( "NoGCMessage", !bConnectedToGC, true );
-	SetControlVisible( "NoGCImage", !bConnectedToGC, true );
-	UpdateRankPanelType();
-
-	SetControlVisible("NoGCMessage", false);
-	SetControlVisible("NoGCImage", false);
-	SetControlVisible("RankBorder", false);
 }
 
 //-----------------------------------------------------------------------------
@@ -1894,13 +1838,6 @@ void CHudMainMenuOverride::OnCommand( const char *command )
 	else if ( !Q_stricmp( command, "test_anim" ) )
 	{
 		InvalidateLayout( true, true );
-
-		StartHighlightAnimation( MMHA_TUTORIAL );
-		StartHighlightAnimation( MMHA_PRACTICE );
-		StartHighlightAnimation( MMHA_NEWUSERFORUM );
-		StartHighlightAnimation( MMHA_OPTIONS );
-		StartHighlightAnimation( MMHA_STORE );
-		StartHighlightAnimation( MMHA_LOADOUT );
 	}
 	else if ( !Q_stricmp( command, "offlinepractice" ) )
 	{
@@ -2072,11 +2009,6 @@ void CHudMainMenuOverride::OnCommand( const char *command )
 		m_pRankTypeMenu->SetVisible(true);
 		m_pRankTypeMenu->AddActionSignalTarget(this);
 	}
-	else if ( V_strnicmp( "view_match_rank_", command, 16 ) == 0 )
-	{
-		ETFMatchGroup eMatchGroup = (ETFMatchGroup)atoi( command + 16 );
-		tf_mainmenu_match_panel_type.SetValue( eMatchGroup );
-	}
 	else
 	{
 		// Pass it on to GameUI main menu
@@ -2112,7 +2044,6 @@ void CHudMainMenuOverride::CheckTrainingStatus( void )
 	bool bShowForum = tf_training_has_prompted_for_forums.GetInt() <= 0;
 	bool bShowOptions = tf_training_has_prompted_for_options.GetInt() <= 0;
 	bool bWasInTraining = m_bWasInTraining;
-	bool bDashboardSidePanels = GetMMDashboard()->BAnySidePanelsShowing();
 	m_bWasInTraining = false;
 
 	bool bShowLoadout = false;
@@ -2129,99 +2060,14 @@ void CHudMainMenuOverride::CheckTrainingStatus( void )
 	if ( !tf_find_a_match_hint_viewed.GetBool() )
 	{
 		tf_find_a_match_hint_viewed.SetValue( true );
-		ShowDashboardExplanation( "FindAMatch" );
-	}
-	else if ( !bDashboardSidePanels && bShowLoadout )
-	{
-		tf_training_has_prompted_for_loadout.SetValue( 1 );
-		StartHighlightAnimation( MMHA_LOADOUT );
-	}
-	else if ( bDashboardSidePanels && bNeedsTraining)
-	{
-		tf_training_has_prompted_for_training.SetValue( 1 );
-
-		auto pExplanation = StartHighlightAnimation( MMHA_TUTORIAL );
-		pExplanation->AddActionSignalTarget( this );
-
-		if ( pExplanation )
-		{
-			if ( UTIL_HasLoadedAnyMap() )
-			{
-				pExplanation->SetDialogVariable( "highlighttext", g_pVGuiLocalize->Find( "#MMenu_TutorialHighlight_Title2" ) );
-			}
-			else
-			{
-				pExplanation->SetDialogVariable( "highlighttext", g_pVGuiLocalize->Find( "#MMenu_TutorialHighlight_Title" ) );
-			}
-		}
-
-		
-	}
-	else if ( bDashboardSidePanels && bWasInTraining && Training_IsComplete() == false && tf_training_has_prompted_for_training.GetInt() < 2 )
-	{
-		tf_training_has_prompted_for_training.SetValue( 2 );
-
-		auto pExplanation = StartHighlightAnimation( MMHA_TUTORIAL );
-		if ( pExplanation )
-		{
-			pExplanation->SetDialogVariable( "highlighttext", g_pVGuiLocalize->Find( "#MMenu_TutorialHighlight_Title3" ) );
-		}
-	}
-	else if ( bDashboardSidePanels && bNeedsPractice )
-	{
-		tf_training_has_prompted_for_offline_practice.SetValue( 1 );
-		StartHighlightAnimation( MMHA_PRACTICE );
 	}
 	else if ( bShowForum )
 	{
 		tf_training_has_prompted_for_forums.SetValue( 1 );
-		StartHighlightAnimation( MMHA_NEWUSERFORUM );
 	}
 	else if ( bShowOptions )
 	{
 		tf_training_has_prompted_for_options.SetValue( 1 );
-		StartHighlightAnimation( MMHA_OPTIONS );
-	}
-}
-
-void CHudMainMenuOverride::UpdateRankPanelType()
-{
-	ETFMatchGroup eMatchGroup = (ETFMatchGroup)tf_mainmenu_match_panel_type.GetInt();
-
-	// Sanitize the matchgroup they want to see.
-	switch ( eMatchGroup )
-	{
-	case k_eTFMatchGroup_Casual_12v12:
-	case k_eTFMatchGroup_Event_Placeholder:
-	case k_eTFMatchGroup_Ladder_6v6:
-		break;
-
-	default:
-		eMatchGroup = k_eTFMatchGroup_Casual_12v12;
-	}
-
-	m_pRankPanel->SetMatchGroup( eMatchGroup );
-	m_pRankPanel->InvalidateLayout( true, true );
-	m_pRankModelPanel->SetMatchGroup( eMatchGroup );
-	m_pRankModelPanel->InvalidateLayout( true, true );
-
-	m_pRankPanel->OnCommand( "begin_xp_lerp" );
-	m_pRankModelPanel->OnCommand( "begin_xp_lerp" );
-
-	// Show the comp ranks tooltip mouseover panel? (the little '(i)' image)
-	bool bShowCompRankTooltip = false;
-	auto pMatchGroup = GetMatchGroupDescription( eMatchGroup );
-	if ( GetProgressionDesc( k_eProgression_Glicko ) == pMatchGroup->m_pProgressionDesc
-		 && GTFGCClientSystem()->BConnectedtoGC() )
-	{
-		bShowCompRankTooltip = true;
-	}
-
-	Panel* pRankTooltipPanel = FindChildByName( "RankTooltipPanel" );
-	if( pRankTooltipPanel )
-	{
-		pRankTooltipPanel->SetVisible( bShowCompRankTooltip );
-		pRankTooltipPanel->SetTooltip( GetCompRanksTooltip(), nullptr );
 	}
 }
 
