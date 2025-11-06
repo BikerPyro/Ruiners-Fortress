@@ -2458,10 +2458,10 @@
 		}				
 	}		
 	
-	"TF2SettingsButton"
+	"TF2SettingsButtonSDK"
 	{
 		"ControlName"	"CExImageButton"
-		"fieldName"		"TF2SettingsButton"
+		"fieldName"		"TF2SettingsButtonSDK"
 		"xpos"			"c170"
 		"ypos"			"437"
 		"zpos"			"1"
@@ -2482,7 +2482,7 @@
 		"Command"		"opentf2options"
 
 		"navUp"			"Notifications_Panel"
-		"navLeft"		"SettingsButton"
+		"navLeft"		"SettingsButtonSDK"
 
 		"sound_depressed"	"UI/buttonclick.wav"
 		"sound_released"	"UI/buttonclickrelease.wav"
@@ -2505,10 +2505,10 @@
 		}				
 	}		
 	
-	"SettingsButton"
+	"SettingsButtonSDK"
 	{
 		"ControlName"	"CExImageButton"
-		"fieldName"		"SettingsButton"
+		"fieldName"		"SettingsButtonSDK"
 		"xpos"			"c14"
 		"ypos"			"437"
 		"zpos"			"1"
@@ -2531,7 +2531,7 @@
 
 		"navUp"			"Notifications_Panel"
 		"navLeft"		"ReportBugButton"
-		"navRight"		"TF2SettingsButton"
+		"navRight"		"TF2SettingsButtonSDK"
 
 		"sound_depressed"	"UI/buttonclick.wav"
 		"sound_released"	"UI/buttonclickrelease.wav"
