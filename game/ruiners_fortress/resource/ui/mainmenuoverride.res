@@ -2575,7 +2575,7 @@
 		"dulltext"		"0"
 		"brighttext"	"0"
 		"default"		"1"
-		"Command"		"engine replay_confirmquit"
+		"Command"		"engine quit prompt"
 
 		"navUp"			"ReplayBrowserButton"
 		"navDown"		"DisconnectButton"
