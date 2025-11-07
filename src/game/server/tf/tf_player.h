@@ -773,7 +773,6 @@ public:
 	float				GetVehicleReverseTime() const { return m_flVehicleReverseTime; }
 	void				SetVehicleReverseTime( float flTime ) { m_flVehicleReverseTime = flTime; }
 
-	bool				IsViewingCYOAPDA( void ) const { return m_bViewingCYOAPDA; }
 	bool				IsRegenerating( void ) const { return m_bRegenerating; }
 
 	HSCRIPT				ScriptGetActiveWeapon( void ) { return ToHScript( GetActiveTFWeapon() ); }
@@ -1534,8 +1533,6 @@ private:
 	CNetworkVar( float, m_flInspectTime );
 
 	CNetworkVar( float, m_flHelpmeButtonPressTime );
-
-	CNetworkVar( bool, m_bViewingCYOAPDA );
 
 	CUtlVector< CHandle< CTFWeaponBase > > m_hDisguiseWeaponList; // copy disguise target weapons to this list
 

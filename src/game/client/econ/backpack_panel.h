@@ -94,7 +94,6 @@ public:
 	MESSAGE_FUNC( DoCraftUpCollection, "Context_CraftUpCollection" );
 	MESSAGE_FUNC( DoHalloweenOffering, "Context_HalloweenOffering" );
 	MESSAGE_FUNC( DoCraftCommonStatClock, "Context_CraftCommonStatClock" );
-	MESSAGE_FUNC( DoOpenConTracker, "Context_OpenConTracker" );
 	void DoEquipForClass( int nClass );
 	void DoPaint( int nPaintItemIndex, bool bUseStore, bool bUseMarket );
 	void DoStrangePart( int nStrangePartIndex, bool bUseMarket );

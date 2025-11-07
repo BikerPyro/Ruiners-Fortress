@@ -45,7 +45,6 @@
 #include "store/v2/tf_store_preview_item2.h"
 #include "item_ad_panel.h"
 #include "client_community_market.h"
-#include "tf_quest_map_panel.h"
 // memdbgon must be the last include file in a .cpp file!!!
 #include <tier0/memdbgon.h>
 
@@ -1910,7 +1909,6 @@ void CBackpackPanel::OpenContextMenu()
 		const CTFItemDefinition *pItemDef = pItem->GetStaticData();
 		static CSchemaItemDefHandle DuckBadgeItemDef( "Duck Badge" );
 		static CSchemaItemDefHandle StrangeCountTransferItemDef( "Strange Count Transfer Tool" );
-		static CSchemaItemDefHandle ContrackerItemDef( "Activated Campaign 3 Pass" );
 
 		// Tools of any kind can't be used if they are in escrow.
 		static CSchemaAttributeDefHandle pAttrib_ToolEscrowUntil( "tool escrow until date" );
@@ -2001,10 +1999,6 @@ void CBackpackPanel::OpenContextMenu()
 			{
 				contextMenuBuilder.AddMenuItem( "#GetDuckToken", new KeyValues( "Context_GetItemFromStore" ), "primaryaction" );
 			}
-		}
-		else if ( pItem->GetItemDefinition() == ContrackerItemDef )
-		{
-			contextMenuBuilder.AddMenuItem( "#Context_ConTracker", new KeyValues( "Context_OpenConTracker" ), "primaryaction" );
 		}
 
 		// 3D Inspect
@@ -3731,14 +3725,6 @@ void CBackpackPanel::DoCraftCommonStatClock()
 	m_pMannCoTradePanel->Show( vecSelectedItems );
 }
 
-//-----------------------------------------------------------------------------
-// Open up the quest map
-//-----------------------------------------------------------------------------
-void CBackpackPanel::DoOpenConTracker()
-{
-	GetQuestMapPanel()->SetVisible( true );
-	EconUI()->CloseEconUI();
-}
 
 //-----------------------------------------------------------------------------
 // Purpose: Bring up the 3D inspect panel for the selected item

@@ -585,7 +585,6 @@ BEGIN_ENT_SCRIPTDESC( CTFPlayer, CBaseMultiplayerPlayer , "Team Fortress 2 Playe
 	DEFINE_SCRIPTFUNC( SetUseBossHealthBar, "" )
 	DEFINE_SCRIPTFUNC( IsFireproof, "" )
 	DEFINE_SCRIPTFUNC( IsAllowedToTaunt, "" )
-	DEFINE_SCRIPTFUNC( IsViewingCYOAPDA, "" )
 	DEFINE_SCRIPTFUNC( IsRegenerating, "" )
 	DEFINE_SCRIPTFUNC( GetCurrentTauntMoveSpeed, "" )
 	DEFINE_SCRIPTFUNC( SetCurrentTauntMoveSpeed, "" )
@@ -842,7 +841,6 @@ IMPLEMENT_SERVERCLASS_ST( CTFPlayer, DT_TFPlayer )
 	SendPropFloat( SENDINFO( m_flHelpmeButtonPressTime ) ),
 	SendPropInt( SENDINFO( m_iCampaignMedals ) ),
 	SendPropInt( SENDINFO( m_iPlayerSkinOverride ) ),
-	SendPropBool( SENDINFO( m_bViewingCYOAPDA ) ),
 	SendPropBool( SENDINFO( m_bRegenerating ) ),
 END_SEND_TABLE()
 
@@ -1114,8 +1112,6 @@ CTFPlayer::CTFPlayer()
 	SetDefLessFunc( m_PlayersExtinguished );
 
 	m_flLastAutobalanceTime = 0.f;
-
-	m_bViewingCYOAPDA = false;
 
 	ResetMaxHealthDrain();
 
@@ -8051,22 +8047,6 @@ bool CTFPlayer::ClientCommand( const CCommand &args )
 		
 		return true;
 	}
-	else if ( FStrEq( "cyoa_pda_open", pcmd ) )
-	{
-		bool bOpen = atoi( args[1] ) != 0;
-
-		if ( bOpen && IsTaunting() )
-		{
-			ClientPrint( this, HUD_PRINTCENTER, "#TF_CYOA_PDA_Taunting" );
-		}
-		else
-		{
-			m_bViewingCYOAPDA.Set( bOpen );
-			TeamFortress_SetSpeed();
-		}
-		return true;
-	}
-
 	return BaseClass::ClientCommand( args );
 }
 

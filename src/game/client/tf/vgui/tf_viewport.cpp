@@ -64,7 +64,6 @@
 #include "tf_hud_mainmenuoverride.h"
 #include "c_tf_objective_resource.h"
 
-#include "quest_log_panel.h"
 #include "tf_matchmaking_dashboard.h"
 
 //#include "tf_overview.h"

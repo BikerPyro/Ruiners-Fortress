@@ -906,8 +906,6 @@ CTFPlayerShared::CTFPlayerShared()
 	m_flHolsterAnimTime = 0.f;
 	m_hSwitchTo = NULL;
 
-	m_iCYOAPDAAnimState = CYOA_PDA_ANIM_NONE;
-
 	// make sure we have all conditions in the list
 	m_ConditionData.EnsureCount( TF_COND_LAST );
 }
@@ -931,8 +929,6 @@ void CTFPlayerShared::Init( CTFPlayer *pPlayer )
 	m_bHasPasstimeBall = false;
 	m_bIsTargetedForPasstimePass = false;
 	m_askForBallTime = 0.0f;
-
-	m_iCYOAPDAAnimState = CYOA_PDA_ANIM_NONE;
 
 	m_bMotionCloak = false;
 
@@ -10702,9 +10698,6 @@ bool CTFPlayer::CanPlayerMove() const
 	if ( TFGameRules() && TFGameRules()->BInMatchStartCountdown() )
 		return false;
 
-	if ( IsViewingCYOAPDA() )
-		return false;
-
 	bool bFreezeOnRestart = tf_player_movement_restart_freeze.GetBool();
 	if ( bFreezeOnRestart )
 	{
@@ -12122,9 +12115,6 @@ bool CTFPlayer::CanAttack( int iCanAttackFlags )
 
 	Assert( pRules );
 
-	if ( IsViewingCYOAPDA() )
-		return false;
-
 	if ( m_Shared.HasPasstimeBall() ) 
 	{
 		// Always allow throwing the ball.
@@ -13049,9 +13039,6 @@ bool CTFPlayer::ShouldStopTaunting()
 {
 	// stop taunt if we're under water
 	if ( GetWaterLevel() > WL_Waist )
-		return true;
-
-	if ( IsViewingCYOAPDA() )
 		return true;
 
 	return false;

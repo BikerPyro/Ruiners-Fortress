@@ -20,7 +20,6 @@
 #ifdef CLIENT_DLL
 	#include "hud_basechat.h"
 	#include "tf_hud_chat.h"
-	#include "quest_log_panel.h"
 #endif
 
 #ifdef GAME_DLL

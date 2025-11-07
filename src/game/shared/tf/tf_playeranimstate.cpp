@@ -570,92 +570,6 @@ void CTFPlayerAnimState::CheckPasstimeThrowAnimation()
 	}
 }
 
-
-
-extern bool IsInPrediction();
-
-//-----------------------------------------------------------------------------
-// Purpose: Updates animation state if player's looking at CYOAPDA
-//-----------------------------------------------------------------------------
-void CTFPlayerAnimState::CheckCYOAPDAAnimtion()
-{
-	CTFPlayer *pPlayer = GetTFPlayer();
-	if ( !pPlayer )
-		return;
-
-	if ( IsInPrediction() )
-		return;
-
-	// do not play anims if in kart
-	if ( pPlayer->m_Shared.InCond( TF_COND_HALLOWEEN_KART ) )
-		return;
-
-	if ( pPlayer->IsTaunting() )
-		return;
-
-	bool isViewingCYOAPDA = pPlayer->IsViewingCYOAPDA();
-
-	CEconItemView *pItem = NULL;
-
-#ifdef GAME_DLL
-	if ( pPlayer->Inventory() )
-	{
-		pItem = pPlayer->GetEquippedItemForLoadoutSlot( LOADOUT_POSITION_ACTION );
-	}
-#else
-	CSteamID steamID;
-	if ( pPlayer->GetSteamID( &steamID ) )
-	{
-		pItem = TFInventoryManager()->GetItemInLoadoutForClass( pPlayer->GetPlayerClass()->GetClassIndex(), LOADOUT_POSITION_ACTION, &steamID );
-	}
-#endif
-	item_definition_index_t contractTrackerDefIndex = 5869;
-	if ( pItem && pItem->GetItemDefIndex() != contractTrackerDefIndex )
-	{
-		// If we don't have the contracker equipped, we can't be looking at it.
-		// We may have been looking at it and only just now removed it,
-		// so we still need to check the animation state and maybe animate out.
-		//
-		// Old code used to return here which would cause the client to stay
-		// locked in the look sequence, but also able to move and shoot.
-		isViewingCYOAPDA = false;
-	}
-
-	TFCYOAPDAAnimState_t state = pPlayer->m_Shared.m_iCYOAPDAAnimState;
-	if ( isViewingCYOAPDA
-		 )
-	{
-		if ( state == CYOA_PDA_ANIM_NONE )
-		{
-			int iSeq = pPlayer->SelectWeightedSequence( ACT_MP_CYOA_PDA_INTRO );
-			pPlayer->m_Shared.m_flCYOAPDAAnimStateTime = gpGlobals->curtime + pPlayer->SequenceDuration( iSeq );
-			pPlayer->DoAnimationEvent( PLAYERANIMEVENT_CYOAPDA_BEGIN );
-			pPlayer->m_Shared.m_iCYOAPDAAnimState = CYOA_PDA_ANIM_IDLE;
-		}
-		else if ( state == CYOA_PDA_ANIM_IDLE && gpGlobals->curtime > pPlayer->m_Shared.m_flCYOAPDAAnimStateTime )
-		{
-			int iSeq = pPlayer->SelectWeightedSequence( ACT_MP_CYOA_PDA_IDLE );
-			pPlayer->m_Shared.m_flCYOAPDAAnimStateTime = gpGlobals->curtime + pPlayer->SequenceDuration( iSeq );
-			pPlayer->DoAnimationEvent( PLAYERANIMEVENT_CYOAPDA_MIDDLE );
-			pPlayer->m_Shared.m_iCYOAPDAAnimState = CYOA_PDA_ANIM_IDLE;
-		}
-	}
-	else
-	{
-		if ( state == CYOA_PDA_ANIM_IDLE && gpGlobals->curtime > pPlayer->m_Shared.m_flCYOAPDAAnimStateTime )
-		{
-			int iSeq = pPlayer->SelectWeightedSequence( ACT_MP_CYOA_PDA_OUTRO );
-			pPlayer->m_Shared.m_flCYOAPDAAnimStateTime = gpGlobals->curtime + pPlayer->SequenceDuration( iSeq );
-			pPlayer->DoAnimationEvent( PLAYERANIMEVENT_CYOAPDA_END );
-			pPlayer->m_Shared.m_iCYOAPDAAnimState = CYOA_PDA_ANIM_OUTRO;
-		}
-		else if ( state == CYOA_PDA_ANIM_OUTRO && gpGlobals->curtime > pPlayer->m_Shared.m_flCYOAPDAAnimStateTime )
-		{
-			pPlayer->m_Shared.m_iCYOAPDAAnimState = CYOA_PDA_ANIM_NONE;
-		}
-	}
-}
-
 //-----------------------------------------------------------------------------
 // Purpose: Updates animation state if we're stunned.
 //-----------------------------------------------------------------------------
@@ -723,7 +637,6 @@ Activity CTFPlayerAnimState::CalcMainActivity()
 {
 	CheckStunAnimation();
 	CheckPasstimeThrowAnimation();
-	CheckCYOAPDAAnimtion();
 
 #ifdef CLIENT_DLL
 	bool bIsAiming = m_pTFPlayer->m_Shared.IsAiming();
@@ -1228,15 +1141,6 @@ void CTFPlayerAnimState::DoAnimationEvent( PlayerAnimEvent_t event, int nData )
 		break;
 	case PLAYERANIMEVENT_PASSTIME_THROW_END:
 		RestartGesture( GESTURE_SLOT_CUSTOM, ACT_MP_PASSTIME_THROW_END );
-		break;
-	case PLAYERANIMEVENT_CYOAPDA_BEGIN:
-		RestartGesture( GESTURE_SLOT_CUSTOM, ACT_MP_CYOA_PDA_INTRO, false );
-		break;
-	case PLAYERANIMEVENT_CYOAPDA_MIDDLE:
-		RestartGesture( GESTURE_SLOT_CUSTOM, ACT_MP_CYOA_PDA_IDLE, false );
-		break;
-	case PLAYERANIMEVENT_CYOAPDA_END:
-		RestartGesture( GESTURE_SLOT_CUSTOM, ACT_MP_CYOA_PDA_OUTRO );
 		break;
 	default:
 		{
