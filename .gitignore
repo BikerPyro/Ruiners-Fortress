@@ -524,3 +524,6 @@ FodyWeavers.xsd
 
 # JetBrains Rider
 *.sln.iml
+game/ruiners_fortress/cfg/settings.scr
+game/ruiners_fortress/maps/graphs/itemtest.ain
+game/ruiners_fortress/serverconfig.vdf

@@ -5295,13 +5295,14 @@ void CTFPlayer::ValidateWearables( TFPlayerClassData_t *pData )
 				itemMatch |= ItemsMatch( pData, pWearable->GetAttributeContainer()->GetItem(), pItem );
 
 				// Item says what slot it wants to be in, but Misc's and Taunts can be in multiple places, check against all
+				bool bLoadoutHead = iLoadoutSlot == LOADOUT_POSITION_HEAD;
 				bool bLoadoutMisc = iLoadoutSlot == LOADOUT_POSITION_MISC;
 				bool bLoadoutTaunt = iLoadoutSlot == LOADOUT_POSITION_TAUNT;
 				if ( bLoadoutMisc || bLoadoutTaunt ) 
 				{
 					for ( int i = LOADOUT_POSITION_INVALID + 1; i < CLASS_LOADOUT_POSITION_COUNT; i++ )
 					{
-						if ( ( bLoadoutMisc && IsMiscSlot( i ) ) || ( bLoadoutTaunt && IsTauntSlot( i ) ) )
+						if ( ( bLoadoutHead && IsHeadSlot( i ) ) || ( bLoadoutMisc && IsMiscSlot( i ) ) || ( bLoadoutTaunt && IsTauntSlot( i ) ) )
 						{
 							pItem = TFInventoryManager()->GetItemInLoadoutForClass( GetPlayerClass()->GetClassIndex(), i, &steamIDForPlayer );
 							itemMatch |= ItemsMatch( pData, pWearable->GetAttributeContainer()->GetItem(), pItem );
