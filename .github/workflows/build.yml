@@ -1,0 +1,215 @@
+# Updated for proper 64-bit builds
+name: Build
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  build:
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: windows-2025
+            build_script: createallprojects.bat
+            build_cmd: msbuild everything.sln /p:Configuration=Release /p:Platform=win64 /m
+            artifact_name: ruiners_fortress-windows
+          - os: ubuntu-latest
+            build_script: ./buildallprojects
+            build_cmd: ""
+            artifact_name: ruiners_fortress-linux
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          submodules: true
+
+      - name: Setup Python (Windows)
+        if: runner.os == 'Windows'
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.x'
+
+      - name: Install Python (Linux)
+        if: runner.os == 'Linux'
+        run: sudo apt-get install -y python3
+
+      #-- caching
+      - name: Setup ccache (Linux)
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y ccache
+          echo 'export PATH="/usr/lib/ccache:$PATH"' >> $GITHUB_ENV
+
+      - name: ~/.ccache stuff (Linux)
+        if: runner.os == 'Linux'
+        run: |
+          if [ ! -d ~/.ccache ]; then
+            mkdir ~/.ccache
+          fi
+
+      - name: Restore ccache cache (Linux)
+        if: runner.os == 'Linux'
+        uses: actions/cache@v4
+        with:
+          path: ~/.ccache
+          key: ${{ runner.os }}-ccache-${{ github.sha }}
+          restore-keys: |
+            ${{ runner.os }}-ccache-
+
+      - name: Restore Windows build cache
+        if: runner.os == 'Windows'
+        uses: actions/cache@v4
+        with:
+          path: |
+            C:\Users\runneradmin\AppData\Local\Microsoft\MSBuild
+            C:\Users\runneradmin\AppData\Local\Temp
+          key: ${{ runner.os }}-msvc-${{ github.sha }}
+          restore-keys: |
+            ${{ runner.os }}-msvc-
+      #-- end caching
+      
+      - name: Make build script executable (Linux)
+        if: runner.os == 'Linux'
+        run: chmod +x ./buildallprojects
+        working-directory: src
+
+      - name: Install Linux build dependencies
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get install -y g++-multilib ninja-build lib32z1-dev podman file
+
+      - name: Setup MSBuild (Windows only)
+        if: runner.os == 'Windows'
+        uses: microsoft/setup-msbuild@v2
+
+      - name: Generate project files (Windows)
+        run: ${{ matrix.build_script }}
+        shell: cmd
+        working-directory: src
+        if: runner.os == 'Windows'
+
+      # Set 64-bit compilation environment
+      - name: Set 64-bit build environment (Linux)
+        if: runner.os == 'Linux'
+        run: |
+          echo 'export CFLAGS="-m64"' >> $GITHUB_ENV
+          echo 'export CXXFLAGS="-m64"' >> $GITHUB_ENV
+          echo 'export LDFLAGS="-m64"' >> $GITHUB_ENV
+        shell: bash
+
+      # Clean previous builds to avoid architecture conflicts
+      - name: Clean previous builds (Linux)
+        if: runner.os == 'Linux'
+        run: |
+          cd src
+          rm -rf _vpc_/
+        shell: bash
+
+      - name: Build (Linux)
+        run: ${{ matrix.build_script }}
+        working-directory: src
+        shell: bash
+        if: runner.os == 'Linux'
+
+      # Verify all libraries are 64-bit
+      - name: Verify library architecture (Linux)
+        if: runner.os == 'Linux'
+        run: |
+          echo "Verifying all .so files are 64-bit..."
+          
+          # Check libraries in src/lib/public/linux64/
+          if [ -d "src/lib/public/linux64" ]; then
+            for lib in src/lib/public/linux64/*.so; do
+              if [ -f "$lib" ]; then
+                echo "Checking $lib:"
+                file "$lib" | grep -q "ELF 64-bit" || {
+                  echo "ERROR: $lib is not 64-bit!"
+                  file "$lib"
+                  exit 1
+                }
+                echo "✓ $lib is 64-bit"
+              fi
+            done
+          fi
+          
+          # Check game binaries
+          if [ -d "game/ruiners_fortress/bin/linux64" ]; then
+            for lib in game/ruiners_fortress/bin/linux64/*.so; do
+              if [ -f "$lib" ]; then
+                echo "Checking $lib:"
+                file "$lib" | grep -q "ELF 64-bit" || {
+                  echo "ERROR: $lib is not 64-bit!"
+                  file "$lib"
+                  exit 1
+                }
+                echo "✓ $lib is 64-bit"
+              fi
+            done
+          fi
+          
+          # Check main executable
+          if [ -f "game/ruiners_fortress_linux64" ]; then
+            echo "Checking game/ruiners_fortress_linux64:"
+            file "game/ruiners_fortress_linux64" | grep -q "ELF 64-bit" || {
+              echo "ERROR: ruiners_fortress_linux64 is not 64-bit!"
+              file "game/ruiners_fortress_linux64"
+              exit 1
+            }
+            echo "✓ ruiners_fortress_linux64 is 64-bit"
+          fi
+          
+          echo "All binaries verified as 64-bit ✓"
+        shell: bash
+
+      - name: Clean and strip (Linux)
+        if: runner.os == 'Linux'
+        run: |
+          find game/ruiners_fortress/bin/linux64 -type f -executable -exec strip --strip-all {} +
+          if [ -f game/ruiners_fortress_linux64 ]; then
+            strip --strip-all game/ruiners_fortress_linux64
+          fi
+        shell: bash
+
+      - name: Build (Windows only)
+        if: runner.os == 'Windows'
+        working-directory: src
+        run: ${{ matrix.build_cmd }}
+
+      - name: Save ccache (Linux)
+        if: runner.os == 'Linux'
+        uses: actions/cache@v4
+        with:
+          path: ~/.ccache
+          key: ${{ runner.os }}-ccache-${{ github.sha }}
+
+      - name: Save Windows build cache
+        if: runner.os == 'Windows'
+        uses: actions/cache@v4
+        with:
+          path: |
+            C:\Users\runneradmin\AppData\Local\Microsoft\MSBuild
+            C:\Users\runneradmin\AppData\Local\Temp
+          key: ${{ runner.os }}-msvc-${{ github.sha }}
+
+      - name: Clean up Windows build
+        if: runner.os == 'Windows'
+        run: |
+            for /r "game" %%f in (*.pdb) do del /q "%%f"
+        shell: cmd
+
+      - name: Upload Binaries
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.artifact_name }}-binaries
+          path: game/ruiners_fortress/bin
+
+      - name: Upload Game Folder
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.artifact_name }}-game
+          path: game/
