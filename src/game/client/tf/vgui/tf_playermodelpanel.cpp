@@ -1417,7 +1417,8 @@ CEconItemView *CTFPlayerModelPanel::GetLoadoutItemFromMDLHandle( loadout_positio
 	{
 		CEconItemView *pItem = m_ItemsToCarry[i];
 		int iLoadoutSlot = pItem->GetStaticData()->GetLoadoutSlot( m_iCurrentClassIndex );
-		if ( ( IsMiscSlot( iLoadoutSlot ) && IsMiscSlot( iPosition ) ) ||
+		if ((IsHeadSlot (iLoadoutSlot) && IsHeadSlot (iPosition)) ||
+			( IsMiscSlot( iLoadoutSlot ) && IsMiscSlot( iPosition ) ) ||
 			 ( IsValidPickupWeaponSlot( iLoadoutSlot ) && iLoadoutSlot == iPosition ) )
 		{
 			const char * pDisplayModel = pItem->GetPlayerDisplayModel( m_iCurrentClassIndex, m_iTeam );
