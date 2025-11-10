@@ -7350,6 +7350,11 @@ void CTFPlayerShared::OnRemoveStunned( void )
 #endif
 
 	m_pOuter->TeamFortress_SetSpeed();
+
+	if ( m_pOuter->GetActiveWeapon() && !InCond( TF_COND_TAUNTING ) && !InCond( TF_COND_HALLOWEEN_KART ) )
+	{
+		m_pOuter->GetActiveWeapon()->SetWeaponVisible( true );
+	}
 }
 
 //-----------------------------------------------------------------------------
