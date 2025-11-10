@@ -1,68 +1,12 @@
-# Source SDK 2013
+# Ruiner's Fortress
 
-Source code for Source SDK 2013.
+My own personal TF2 mod, mostly readding old models, some reverts and planning to add new weapons.
 
-Contains the game code for Half-Life 2, HL2: DM and TF2.
+## Credits
 
-**Now including Team Fortress 2! ✨**
-
-## Build instructions
-
-Clone the repository using the following command:
-
-`git clone https://github.com/ValveSoftware/source-sdk-2013`
-
-### Windows
-
-Requirements:
- - Source SDK 2013 Multiplayer installed via Steam
- - Visual Studio 2022 with the following workload and components:
-   - Desktop development with C++:
-     - MSVC v143 - VS 2022 C++ x64/x86 build tools (Latest)
-     - Windows 11 SDK (10.0.22621.0) or Windows 10 SDK (10.0.19041.1)
- - Python 3.13 or later
-
-Inside the cloned directory, navigate to `src`, run:
-```bat
-createallprojects.bat
-```
-This will generate the Visual Studio project `everything.sln` which will be used to build your mod.
-
-Then, on the menu bar, go to `Build > Build Solution`, and wait for everything to build.
-
-You can then select the `Client (Mod Name)` project you wish to run, right click and select `Set as Startup Project` and hit the big green `> Local Windows Debugger` button on the tool bar in order to launch your mod.
-
-The default launch options should be already filled in for the `Release` configuration.
-
-### Linux
-
-Requirements:
- - Source SDK 2013 Multiplayer installed via Steam
- - podman
-
-Inside the cloned directory, navigate to `src`, run:
-```bash
-./buildallprojects
-```
-
-This will build all the projects related to the SDK and your mods automatically against the Steam Runtime.
-
-You can then, in the root of the cloned directory, you can navigate to `game` and run your mod by launching the build launcher for your mod project, eg:
-```bash
-./ruiners_fortress
-```
-
-*Mods that are distributed on Steam MUST be built against the Steam Runtime, which the above steps will automatically do for you.*
-
-## Distributing your Mod
-
-There is guidance on distributing your mod both on and off Steam available at the following link:
-
-https://partner.steamgames.com/doc/sdk/uploading/distributing_source_engine
-
-## Additional Resources
-
-- [Valve Developer Wiki](https://developer.valvesoftware.com/wiki/Source_SDK_2013)
+Conneath's TF2 Gold Rush Code: adding support for v/w_models loading directly from items_game.txt and minigun brass effect.
+Grub's Grub Fortress Code: the implemetation of removing miscs and action slot was thanks to his work. Also his build.yml file.
+TF Archived Discord server: Sharing the files of old tf2.
 
 ## License
 
