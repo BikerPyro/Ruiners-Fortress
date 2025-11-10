@@ -248,6 +248,7 @@ protected:
 
 		bool				m_bIsUpdateToDate;
 		CParticleCollection	*m_pParticleSystem;
+		CBaseModelPanel     *m_pOuter;
 	};
 	CUtlVector< particle_data_t* > m_particleList;
 

@@ -11,6 +11,7 @@
 #include "collisionutils.h"
 
 #if defined( CLIENT_DLL )
+#include "basemodel_panel.h"
 #include "c_pixel_visibility.h"
 #endif
 
@@ -208,6 +209,15 @@ void CParticleSystemQuery::GetRandomPointsOnControllingObjectHitBox(
 	{
 		pMoveParent = *( phMoveParent );
 	}
+	CBaseModelPanel *pPanel = NULL;
+	if ( !pMoveParent )
+	{
+		vgui::VPANEL hPanel = reinterpret_cast< vgui::VPANEL >( pParticles->m_ControlPoints[ nControlPointNumber ].m_pObject );
+		if ( hPanel )
+		{
+			pPanel = dynamic_cast< CBaseModelPanel * >( vgui::ipanel()->GetPanel( hPanel, vgui::GetControlsModuleName() ) );
+		}
+	}
 	if ( pMoveParent )
 	{
 		float flRandMax = flBBoxScale;
@@ -371,6 +381,74 @@ void CParticleSystemQuery::GetRandomPointsOnControllingObjectHitBox(
 
 		s_BoneMutex.Unlock();
 	}
+	else if ( pPanel )
+	{
+		float flRandMax = flBBoxScale;
+		float flRandMin = 1.0 - flBBoxScale;
+		Vector vecBasePos;
+		pParticles->GetControlPointAtTime( nControlPointNumber, pParticles->m_flCurTime, &vecBasePos );
+
+		studiohdr_t *pStudioHdr = pPanel->GetStudioHdr();
+		if ( pStudioHdr )
+		{
+			mstudiohitboxset_t *set = pStudioHdr->pHitboxSet( 0 /*default*/ );
+			if ( set )
+			{
+				bSucesss = true;
+
+				Vector vecWorldPosition( 0, 0, 0 );
+				float u = 0, v = 0, w = 0;
+				int nHitbox = 0;
+				int nNumIters = nNumTrysToGetAPointInsideTheModel;
+				if ( !vecDirectionalBias.IsZero( 0.0001 ) )
+					nNumIters = MAX( nNumIters, 5 );
+
+				for ( int i = 0; i < nNumPtsOut; i++ )
+				{
+					float flBestPointGoodness = -1.0e20;
+					int nTryCnt = nNumIters;
+					do
+					{
+						int nTryHitbox = pParticles->RandomInt( 0, set->numhitboxes - 1 );
+						mstudiobbox_t *pBox = set->pHitbox( nTryHitbox );
+
+						float flTryU = pParticles->RandomFloat( flRandMin, flRandMax );
+						float flTryV = pParticles->RandomFloat( flRandMin, flRandMax );
+						float flTryW = pParticles->RandomFloat( flRandMin, flRandMax );
+
+						Vector vecLocalPosition;
+						vecLocalPosition.x = GetSurfaceCoord( flTryU, pBox->bbmin.x, pBox->bbmax.x );
+						vecLocalPosition.y = GetSurfaceCoord( flTryV, pBox->bbmin.y, pBox->bbmax.y );
+						vecLocalPosition.z = GetSurfaceCoord( flTryW, pBox->bbmin.z, pBox->bbmax.z );
+
+						// Model panels don't cache bone transforms as an entity would
+						// so instead we approximate world space locations by sampling
+						// hitbox positions in model-local space and offsetting them by
+						// the control point's position
+						Vector vecTryWorldPosition = vecBasePos + vecLocalPosition;
+
+						float flPointGoodness = pParticles->RandomFloat( 0, 72 )
+							+ DotProduct( vecTryWorldPosition - vecBasePos, vecDirectionalBias );
+
+						if ( flPointGoodness > flBestPointGoodness )
+						{
+							u = flTryU;
+							v = flTryV;
+							w = flTryW;
+							vecWorldPosition = vecTryWorldPosition;
+							nHitbox = nTryHitbox;
+							flBestPointGoodness = flPointGoodness;
+						}
+					} while ( nTryCnt-- );
+					*( pPntsOut++ ) = vecWorldPosition;
+					if ( pHitBoxRelativeCoordOut )
+						( pHitBoxRelativeCoordOut++ )->Init( u, v, w );
+					if ( pHitBoxIndexOut )
+						*( pHitBoxIndexOut++ ) = nHitbox;
+				}
+			}
+		}
+	}
 #endif
 	if (! bSucesss )
 	{
@@ -405,6 +483,15 @@ int CParticleSystemQuery::GetControllingObjectHitBoxInfo(
 	if ( phMoveParent )
 	{
 		pMoveParent = *( phMoveParent );
+	}
+	CBaseModelPanel *pPanel = NULL;
+	if ( !pMoveParent )
+	{
+		vgui::VPANEL hPanel = reinterpret_cast< vgui::VPANEL >( pParticles->m_ControlPoints[ nControlPointNumber ].m_pObject );
+		if ( hPanel )
+		{
+			pPanel = dynamic_cast< CBaseModelPanel * >( vgui::ipanel()->GetPanel( hPanel, vgui::GetControlsModuleName() ) );
+		}
 	}
 
 	if ( pMoveParent )
@@ -454,6 +541,35 @@ int CParticleSystemQuery::GetControllingObjectHitBoxInfo(
 			pHitBoxOutputBuffer[0].m_vecBoxMaxes = vecMax;
 			pHitBoxOutputBuffer[0].m_Transform = matOrientation;
 			nRet = 1;
+		}
+	}
+	else if ( pPanel )
+	{
+		studiohdr_t *pStudioHdr = pPanel->GetStudioHdr();
+
+		if ( pStudioHdr )
+		{
+			mstudiohitboxset_t *set = pStudioHdr->pHitboxSet( 0 );
+
+			if ( set )
+			{
+				nRet = MIN( nBufSize, set->numhitboxes );
+				for ( int i = 0; i < nRet; i++ )
+				{
+					mstudiobbox_t *pBox = set->pHitbox( i );
+					pHitBoxOutputBuffer[ i ].m_vecBoxMins.x = pBox->bbmin.x;
+					pHitBoxOutputBuffer[ i ].m_vecBoxMins.y = pBox->bbmin.y;
+					pHitBoxOutputBuffer[ i ].m_vecBoxMins.z = pBox->bbmin.z;
+
+					pHitBoxOutputBuffer[ i ].m_vecBoxMaxes.x = pBox->bbmax.x;
+					pHitBoxOutputBuffer[ i ].m_vecBoxMaxes.y = pBox->bbmax.y;
+					pHitBoxOutputBuffer[ i ].m_vecBoxMaxes.z = pBox->bbmax.z;
+
+					// Model panels don't cache bone transforms as an entity would so
+					// use identity matrix instead so we only offset from the control point
+					SetIdentityMatrix( pHitBoxOutputBuffer[ i ].m_Transform );
+				}
+			}
 		}
 	}
 	s_BoneMutex.Unlock();

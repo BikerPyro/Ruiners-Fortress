@@ -803,6 +803,7 @@ void CBaseModelPanel::particle_data_t::UpdateControlPoints( CStudioHdr *pStudioH
 				MatrixPosition( matAttachToWorld, vecPosition );
 
 				m_pParticleSystem->SetControlPointOrientation( i, vecForward, vecRight, vecUp );
+				m_pParticleSystem->SetControlPointObject( i, ( void * )m_pOuter->GetVPanel() );
 				m_pParticleSystem->SetControlPoint( i, vecPosition + vecParticleOffset );
 			}
 		}
@@ -813,6 +814,7 @@ void CBaseModelPanel::particle_data_t::UpdateControlPoints( CStudioHdr *pStudioH
 			MatrixPosition( matAttachToWorld, vecPosition );
 			
 			m_pParticleSystem->SetControlPointOrientation( 0, vecForward, vecRight, vecUp );
+			m_pParticleSystem->SetControlPointObject( 0, ( void * )m_pOuter->GetVPanel() );
 			m_pParticleSystem->SetControlPoint( 0, vecPosition + vecParticleOffset );
 		}
 	}
@@ -837,6 +839,7 @@ CBaseModelPanel::particle_data_t *CBaseModelPanel::CreateParticleData( const cha
 	particle_data_t *pData = new particle_data_t;
 	pData->m_bIsUpdateToDate = false;
 	pData->m_pParticleSystem = pParticle;
+	pData->m_pOuter = this;
 
 	m_particleList.AddToTail( pData );
 
