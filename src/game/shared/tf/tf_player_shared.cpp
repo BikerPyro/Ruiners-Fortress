@@ -10985,11 +10985,11 @@ float CTFPlayer::TeamFortress_CalculateMaxSpeed( bool bIgnoreSpecialAbility /*= 
 			// Make this change based on attrs, hardcode right now
 			maxfbspeed *= RemapValClamped( m_Shared.GetScoutHypeMeter(), 0.0f, 100.0f, 1.0f, 1.45f );
 		}
-		// Atomic Punch gives a move bonus while active
-// 		if ( m_Shared.InCond( TF_COND_PHASE ) )
-// 		{
-// 			maxfbspeed *= 1.25f;
-// 		}
+		// Crit-a-Cola gives a move bonus while active
+ 		if ( m_Shared.InCond( TF_COND_ENERGY_BUFF ) )
+ 		{
+ 			maxfbspeed *= 1.25f;
+ 		}
 	}
 
 	// Mann Vs Machine mode has a speed penalty for carrying the flag

@@ -911,9 +911,14 @@ float CTFWeaponBaseGun::GetProjectileDamage( void )
 
 	// Some weapons mod dmg when not disguised
 	bool bDisguised = pPlayer && pPlayer->m_Shared.InCond( TF_COND_DISGUISED );
+
 	if ( bDisguised )
 	{
 		CALL_ATTRIB_HOOK_FLOAT( flDamage, mult_dmg_disguised );
+	}
+	else
+	{
+		CALL_ATTRIB_HOOK_FLOAT(flDamage, mult_dmg_undisguised);
 	}
 
 	if ( pPlayer && ( pPlayer->IsPlayerClass( TF_CLASS_SOLDIER ) || pPlayer->IsPlayerClass( TF_CLASS_PYRO ) ) )

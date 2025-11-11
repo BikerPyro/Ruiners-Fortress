@@ -70,6 +70,7 @@ game/ruiners_fortress_win64.exe
 game/ruiners_fortress/cfg/settings.scr
 game/ruiners_fortress/maps/graphs/itemtest.ain
 game/ruiners_fortress/serverconfig.vdf
+game/ruiners_fortress/cfg/user.scr
 
 # shader files
 *.tmp
