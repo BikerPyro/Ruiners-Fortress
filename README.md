@@ -4,9 +4,12 @@ My own personal TF2 mod, mostly readding old models, some reverts and planning t
 
 ## Credits
 
-Conneath's TF2 Gold Rush Code: adding support for v/w_models loading directly from items_game.txt and minigun brass effect.
-Grub's Grub Fortress Code: the implemetation of removing miscs and action slot was thanks to his work. Also his build.yml file.
-TF Archived Discord server: Sharing the files of old tf2.
+- **Conneath's** TF2 Gold Rush Code: adding support for v/w_models loading directly from items_game.txt and minigun brass effect.
+
+- **Grub's** Grub Fortress Code: the implemetation of removing miscs and action slot was thanks to his work. Also his build.yml file.
+
+- **TF Archived** Discord server: Sharing the files of old tf2.
+
 
 ## License
 

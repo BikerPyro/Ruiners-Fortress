@@ -13074,17 +13074,17 @@ void CTFPlayer::DropAmmoPack( const CTakeDamageInfo &info, bool bEmpty, bool bDi
 	if( !CalculateAmmoPackPositionAndAngles( pWeapon, vecPackOrigin, vecPackAngles ) )
 		return;
 
-	CEconItemView *pItem = pDropWeaponProps->GetAttributeContainer()->GetItem();
+	//CEconItemView *pItem = pDropWeaponProps->GetAttributeContainer()->GetItem();
 	bool bIsSuicide = info.GetAttacker() ? info.GetAttacker()->GetTeamNumber() == GetTeamNumber() : false;
 
-	CTFDroppedWeapon *pDroppedWeapon = CTFDroppedWeapon::Create( this, vecPackOrigin, vecPackAngles, pszWorldModel, pItem );
-	if ( pDroppedWeapon )
-	{
-		pDroppedWeapon->InitDroppedWeapon( this, pDropWeaponProps, false, bIsSuicide );
-	}
+	//CTFDroppedWeapon *pDroppedWeapon = CTFDroppedWeapon::Create( this, vecPackOrigin, vecPackAngles, pszWorldModel, pItem );
+	//if ( pDroppedWeapon )
+	//{
+	//	pDroppedWeapon->InitDroppedWeapon( this, pDropWeaponProps, false, bIsSuicide );
+	//}
 
 	// Create the ammo pack.
-	CTFAmmoPack *pAmmoPack = CTFAmmoPack::Create( vecPackOrigin, vecPackAngles, this, "models/items/ammopack_medium.mdl" );
+	CTFAmmoPack* pAmmoPack = CTFAmmoPack::Create(vecPackOrigin, vecPackAngles, this, pszWorldModel);
 	Assert( pAmmoPack );
 	if ( pAmmoPack )
 	{
@@ -14070,31 +14070,31 @@ int CTFPlayer::GiveAmmo( int iCount, int iAmmoIndex, bool bSuppressSound, EAmmoS
 	// ammo.
 	if ( iAmmoIndex != TF_AMMO_METAL )
 	{
-		//int iAmmoBecomesHealth = 0;
-		//CALL_ATTRIB_HOOK_INT( iAmmoBecomesHealth, ammo_becomes_health );
-		//if ( iAmmoBecomesHealth == 1 )
-		//{
-		//	// Ammo from ground pickups is converted to health.
-		//	if ( eAmmoSource == kAmmoSource_Pickup )
-		//	{
-		//		int iTakenHealth = TakeHealth( iCount, DMG_GENERIC );
-		//		if ( iTakenHealth > 0 )
-		//		{
-		//			if ( !bSuppressSound )
-		//			{
-		//				EmitSound( "BaseCombatCharacter.AmmoPickup" );
-		//			}
-		//			m_Shared.HealthKitPickupEffects( iCount );
-		//		}
-		//		return iTakenHealth;
-		//	}
+		int iAmmoBecomesHealth = 0;
+		CALL_ATTRIB_HOOK_INT( iAmmoBecomesHealth, ammo_becomes_health );
+		if ( iAmmoBecomesHealth == 1 )
+		{
+			// Ammo from ground pickups is converted to health.
+			if ( eAmmoSource == kAmmoSource_Pickup )
+			{
+				int iTakenHealth = TakeHealth( iCount, DMG_GENERIC );
+				if ( iTakenHealth > 0 )
+				{
+					if ( !bSuppressSound )
+					{
+						EmitSound( "BaseCombatCharacter.AmmoPickup" );
+					}
+					m_Shared.HealthKitPickupEffects( iCount );
+				}
+				return iTakenHealth;
+			}
 
-		//	// Ammo from the cart or engineer dispensers is flatly ignored.
-		//	if ( eAmmoSource == kAmmoSource_DispenserOrCart )
-		//		return 0;
+			// Ammo from the cart or engineer dispensers is flatly ignored.
+			if ( eAmmoSource == kAmmoSource_DispenserOrCart )
+				return 0;
 
-		//	Assert( eAmmoSource == kAmmoSource_Resupply );
-		//}
+			Assert( eAmmoSource == kAmmoSource_Resupply );
+		}
 
 		// Items that rely on timers to refill ammo use these attributes
 		// Prevents "touch supply closet and spam the thing" scenario.
