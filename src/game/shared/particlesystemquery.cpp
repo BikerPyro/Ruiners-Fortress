@@ -9,6 +9,7 @@
 #include "baseparticleentity.h"
 #include "entityparticletrail_shared.h"
 #include "collisionutils.h"
+#include "bone_setup.h"
 
 #if defined( CLIENT_DLL )
 #include "basemodel_panel.h"
@@ -209,14 +210,10 @@ void CParticleSystemQuery::GetRandomPointsOnControllingObjectHitBox(
 	{
 		pMoveParent = *( phMoveParent );
 	}
-	CBaseModelPanel *pPanel = NULL;
+	CBaseModelPanel::particle_data_t *pPanelParticleData = NULL;
 	if ( !pMoveParent )
 	{
-		vgui::VPANEL hPanel = reinterpret_cast< vgui::VPANEL >( pParticles->m_ControlPoints[ nControlPointNumber ].m_pObject );
-		if ( hPanel )
-		{
-			pPanel = dynamic_cast< CBaseModelPanel * >( vgui::ipanel()->GetPanel( hPanel, vgui::GetControlsModuleName() ) );
-		}
+		pPanelParticleData = reinterpret_cast< CBaseModelPanel::particle_data_t * >( pParticles->m_ControlPoints[ nControlPointNumber ].m_pObject );
 	}
 	if ( pMoveParent )
 	{
@@ -381,14 +378,16 @@ void CParticleSystemQuery::GetRandomPointsOnControllingObjectHitBox(
 
 		s_BoneMutex.Unlock();
 	}
-	else if ( pPanel )
+	else if ( pPanelParticleData )
 	{
 		float flRandMax = flBBoxScale;
 		float flRandMin = 1.0 - flBBoxScale;
 		Vector vecBasePos;
 		pParticles->GetControlPointAtTime( nControlPointNumber, pParticles->m_flCurTime, &vecBasePos );
 
-		studiohdr_t *pStudioHdr = pPanel->GetStudioHdr();
+		matrix3x4_t *pmatBoneToWorld = pPanelParticleData->m_pOuter->BoneArray( pPanelParticleData->m_pStudioHdr );
+		const studiohdr_t *pStudioHdr = pPanelParticleData->m_pStudioHdr->GetRenderHdr();
+
 		if ( pStudioHdr )
 		{
 			mstudiohitboxset_t *set = pStudioHdr->pHitboxSet( 0 /*default*/ );
@@ -421,11 +420,8 @@ void CParticleSystemQuery::GetRandomPointsOnControllingObjectHitBox(
 						vecLocalPosition.y = GetSurfaceCoord( flTryV, pBox->bbmin.y, pBox->bbmax.y );
 						vecLocalPosition.z = GetSurfaceCoord( flTryW, pBox->bbmin.z, pBox->bbmax.z );
 
-						// Model panels don't cache bone transforms as an entity would
-						// so instead we approximate world space locations by sampling
-						// hitbox positions in model-local space and offsetting them by
-						// the control point's position
-						Vector vecTryWorldPosition = vecBasePos + vecLocalPosition;
+						Vector vecTryWorldPosition;
+						VectorTransform( vecLocalPosition, pmatBoneToWorld[ pBox->bone ], vecTryWorldPosition );
 
 						float flPointGoodness = pParticles->RandomFloat( 0, 72 )
 							+ DotProduct( vecTryWorldPosition - vecBasePos, vecDirectionalBias );
@@ -484,14 +480,10 @@ int CParticleSystemQuery::GetControllingObjectHitBoxInfo(
 	{
 		pMoveParent = *( phMoveParent );
 	}
-	CBaseModelPanel *pPanel = NULL;
+	CBaseModelPanel::particle_data_t *pPanelParticleData = NULL;
 	if ( !pMoveParent )
 	{
-		vgui::VPANEL hPanel = reinterpret_cast< vgui::VPANEL >( pParticles->m_ControlPoints[ nControlPointNumber ].m_pObject );
-		if ( hPanel )
-		{
-			pPanel = dynamic_cast< CBaseModelPanel * >( vgui::ipanel()->GetPanel( hPanel, vgui::GetControlsModuleName() ) );
-		}
+		pPanelParticleData = reinterpret_cast< CBaseModelPanel::particle_data_t * > ( pParticles->m_ControlPoints[ nControlPointNumber ].m_pObject );
 	}
 
 	if ( pMoveParent )
@@ -543,13 +535,14 @@ int CParticleSystemQuery::GetControllingObjectHitBoxInfo(
 			nRet = 1;
 		}
 	}
-	else if ( pPanel )
+	else if ( pPanelParticleData )
 	{
-		studiohdr_t *pStudioHdr = pPanel->GetStudioHdr();
+		matrix3x4_t *pmatBoneToWorld = pPanelParticleData->m_pOuter->BoneArray( pPanelParticleData->m_pStudioHdr );
+		const studiohdr_t *pStudioHdr = pPanelParticleData->m_pStudioHdr->GetRenderHdr();
 
 		if ( pStudioHdr )
 		{
-			mstudiohitboxset_t *set = pStudioHdr->pHitboxSet( 0 );
+			mstudiohitboxset_t *set = pStudioHdr->pHitboxSet( 0 /*default*/ );
 
 			if ( set )
 			{
@@ -565,9 +558,7 @@ int CParticleSystemQuery::GetControllingObjectHitBoxInfo(
 					pHitBoxOutputBuffer[ i ].m_vecBoxMaxes.y = pBox->bbmax.y;
 					pHitBoxOutputBuffer[ i ].m_vecBoxMaxes.z = pBox->bbmax.z;
 
-					// Model panels don't cache bone transforms as an entity would so
-					// use identity matrix instead so we only offset from the control point
-					SetIdentityMatrix( pHitBoxOutputBuffer[ i ].m_Transform );
+					pHitBoxOutputBuffer[ i ].m_Transform = pmatBoneToWorld[ pBox->bone ];
 				}
 			}
 		}

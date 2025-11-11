@@ -212,6 +212,18 @@ protected:
 	void SetupModelAnimDefaults( void );
 
 public:
+	struct particle_data_t
+	{
+		~particle_data_t();
+
+		void UpdateControlPoints( CStudioHdr *pStudioHdr, matrix3x4_t *pWorldMatrix, const CUtlVector< int > &vecAttachments, int iDefaultBone = 0, const Vector &vecParticleOffset = vec3_origin );
+
+		bool                 m_bIsUpdateToDate;
+		CParticleCollection *m_pParticleSystem;
+		CStudioHdr          *m_pStudioHdr;
+		CBaseModelPanel     *m_pOuter;
+	};
+
 	BMPResData_t	m_BMPResData;			// Base model panel data set in the .res file.
 	QAngle			m_angPlayer;
 	Vector			m_vecPlayerPos;
@@ -240,16 +252,6 @@ protected:
 	CPanelAnimationVar( bool, m_bUseParticle, "use_particle", "0" );
 	CPanelAnimationVar( float, m_flMaxPitch, "max_pitch", "90" );
 
-	struct particle_data_t
-	{
-		~particle_data_t();
-
-		void UpdateControlPoints( CStudioHdr *pStudioHdr, matrix3x4_t *pWorldMatrix, const CUtlVector< int >& vecAttachments, int iDefaultBone = 0, const Vector& vecParticleOffset = vec3_origin );
-
-		bool				m_bIsUpdateToDate;
-		CParticleCollection	*m_pParticleSystem;
-		CBaseModelPanel     *m_pOuter;
-	};
 	CUtlVector< particle_data_t* > m_particleList;
 
 	

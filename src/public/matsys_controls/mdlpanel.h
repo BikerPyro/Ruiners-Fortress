@@ -106,6 +106,8 @@ public:
 	virtual void FireEvent( const char *pszEventName, const char *pszEventOptions );
 	void ResetAnimationEventState( MDLAnimEventState_t *pEventState );
 
+	matrix3x4_t *BoneArray( CStudioHdr *pStudioHdr ) const;
+
 protected:
 
 	virtual void SetupRenderState( int nDisplayWidth, int nDisplayHeight ) OVERRIDE;
@@ -118,6 +120,8 @@ protected:
 		float		m_flCycleStartTime;
 		CStudioHdr	*m_pStudioHdr;
 		uint32		m_unMdlCacheSerial;
+		int          m_nLastBoneCount;
+		matrix3x4_t *m_pmatLastBoneToWorld;
 	};
 
 	MDLData_t				m_RootMDL;
