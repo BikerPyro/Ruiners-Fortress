@@ -176,7 +176,11 @@ void CMDLPanel::SetMDL( MDLHandle_t handle, void *pProxyData )
 	m_RootMDL.m_flCycleStartTime = 0.f;
 
 	m_RootMDL.m_nLastBoneCount = -1;
-	m_RootMDL.m_pmatLastBoneToWorld = NULL;
+	if ( m_RootMDL.m_pmatLastBoneToWorld )
+	{
+		delete[] m_RootMDL.m_pmatLastBoneToWorld;
+		m_RootMDL.m_pmatLastBoneToWorld = NULL;
+	}
 
 	// Set the pose parameters to the default for the mdl
 	SetPoseParameters( NULL, 0 );
@@ -1026,7 +1030,7 @@ void CMDLPanel::ValidateMDLs()
 //-----------------------------------------------------------------------------
 // Purpose: Gets last bone to world matrices
 //-----------------------------------------------------------------------------
-matrix3x4_t *CMDLPanel::BoneArray( CStudioHdr *pStudioHdr ) const
+const matrix3x4_t *CMDLPanel::BoneArray( CStudioHdr *pStudioHdr )
 {
 	if ( pStudioHdr == m_RootMDL.m_pStudioHdr )
 	{

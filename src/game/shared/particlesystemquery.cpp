@@ -9,7 +9,6 @@
 #include "baseparticleentity.h"
 #include "entityparticletrail_shared.h"
 #include "collisionutils.h"
-#include "bone_setup.h"
 
 #if defined( CLIENT_DLL )
 #include "basemodel_panel.h"
@@ -204,16 +203,16 @@ void CParticleSystemQuery::GetRandomPointsOnControllingObjectHitBox(
 
 #ifndef GAME_DLL
 
-	EHANDLE *phMoveParent = reinterpret_cast< EHANDLE * > ( pParticles->m_ControlPoints[ nControlPointNumber ].m_pObject );
+	EHANDLE *phMoveParent = reinterpret_cast< EHANDLE * >( pParticles->m_ControlPoints[ nControlPointNumber ].m_pObject );
 	CBaseEntity *pMoveParent = phMoveParent ? *( phMoveParent ) : NULL;
-	CBaseModelPanel::particle_data_t *pPanelParticleData = !pMoveParent ? reinterpret_cast< CBaseModelPanel::particle_data_t * > ( pParticles->m_ControlPoints[ nControlPointNumber ].m_pObject ) : NULL;
+	BMPParticleQueryObject_t *pBMPObj = !pMoveParent ? reinterpret_cast< BMPParticleQueryObject_t * >( pParticles->m_ControlPoints[ nControlPointNumber ].m_pObject ) : NULL;
 
 	float flRandMax = flBBoxScale;
 	float flRandMin = 1.f - flBBoxScale;
 	Vector vecBasePos;
 	pParticles->GetControlPointAtTime( nControlPointNumber, pParticles->m_flCurTime, &vecBasePos );
 
-	auto lambdaStudioGetRandomPoints = [ & ]( const studiohdr_t *pStudioHdr, matrix3x4_t *pmatBoneToWorld, int nHitBoxSet = 0, float flModelScale = 1.f, bool bEntity = false )
+	auto lambdaStudioGetRandomPoints = [ & ]( const studiohdr_t *pStudioHdr, const matrix3x4_t *pmatBoneToWorld, int nHitBoxSet = 0, float flModelScale = 1.f, bool bEntity = false )
 	{
 		mstudiohitboxset_t *pSet = pStudioHdr->pHitboxSet( nHitBoxSet );
 		if ( pSet )
@@ -367,11 +366,11 @@ void CParticleSystemQuery::GetRandomPointsOnControllingObjectHitBox(
 
 		s_BoneMutex.Unlock();
 	}
-	else if ( pPanelParticleData )
+	else if ( pBMPObj )
 	{
-		matrix3x4_t *pmatBoneToWorld = pPanelParticleData->m_pOuter->BoneArray( pPanelParticleData->m_pStudioHdr );
-		const studiohdr_t *pStudioHdr = pPanelParticleData->m_pStudioHdr->GetRenderHdr();
-		if ( pStudioHdr )
+		const matrix3x4_t *pmatBoneToWorld = pBMPObj->m_pmatBoneToWorld;
+		const studiohdr_t *pStudioHdr = pBMPObj->m_pStudioHdr;
+		if ( pStudioHdr && pmatBoneToWorld )
 		{
 			lambdaStudioGetRandomPoints( pStudioHdr, pmatBoneToWorld );
 		}
@@ -405,11 +404,11 @@ int CParticleSystemQuery::GetControllingObjectHitBoxInfo(
 #ifndef GAME_DLL
 	s_BoneMutex.Lock();
 
-	EHANDLE *phMoveParent = reinterpret_cast<EHANDLE *> ( pParticles->m_ControlPoints[nControlPointNumber].m_pObject );
+	EHANDLE *phMoveParent = reinterpret_cast< EHANDLE * >( pParticles->m_ControlPoints[ nControlPointNumber ].m_pObject );
 	CBaseEntity *pMoveParent = phMoveParent ? *( phMoveParent ) : NULL;
-	CBaseModelPanel::particle_data_t *pPanelParticleData = !pMoveParent ? reinterpret_cast< CBaseModelPanel::particle_data_t * > ( pParticles->m_ControlPoints[ nControlPointNumber ].m_pObject ) : NULL;
+	BMPParticleQueryObject_t *pBMPObj = !pMoveParent ? reinterpret_cast< BMPParticleQueryObject_t * >( pParticles->m_ControlPoints[ nControlPointNumber ].m_pObject ) : NULL;
 
-	auto lambdaStudioGetHitBoxInfo = [ & ]( const studiohdr_t *pStudioHdr, matrix3x4_t *pmatBoneToWorld, int nHitBoxSet = 0 )
+	auto lambdaStudioGetHitBoxInfo = [ & ]( const studiohdr_t *pStudioHdr, const matrix3x4_t *pmatBoneToWorld, int nHitBoxSet = 0 )
 	{
 		mstudiohitboxset_t *pSet = pStudioHdr->pHitboxSet( nHitBoxSet );
 		if ( pSet )
@@ -453,11 +452,11 @@ int CParticleSystemQuery::GetControllingObjectHitBoxInfo(
 			nRet = 1;
 		}
 	}
-	else if ( pPanelParticleData )
+	else if ( pBMPObj )
 	{
-		matrix3x4_t *pmatBoneToWorld = pPanelParticleData->m_pOuter->BoneArray( pPanelParticleData->m_pStudioHdr );
-		const studiohdr_t *pStudioHdr = pPanelParticleData->m_pStudioHdr->GetRenderHdr();
-		if ( pStudioHdr )
+		const matrix3x4_t *pmatBoneToWorld = pBMPObj->m_pmatBoneToWorld;
+		const studiohdr_t *pStudioHdr = pBMPObj->m_pStudioHdr;
+		if ( pStudioHdr && pmatBoneToWorld )
 		{
 			lambdaStudioGetHitBoxInfo( pStudioHdr, pmatBoneToWorld );
 		}

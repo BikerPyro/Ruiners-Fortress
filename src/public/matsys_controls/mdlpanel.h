@@ -106,7 +106,7 @@ public:
 	virtual void FireEvent( const char *pszEventName, const char *pszEventOptions );
 	void ResetAnimationEventState( MDLAnimEventState_t *pEventState );
 
-	matrix3x4_t *BoneArray( CStudioHdr *pStudioHdr ) const;
+	const matrix3x4_t *BoneArray( CStudioHdr *pStudioHdr );
 
 protected:
 

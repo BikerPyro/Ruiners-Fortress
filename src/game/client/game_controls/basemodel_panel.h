@@ -12,6 +12,21 @@
 #include "matsys_controls/mdlpanel.h"
 
 //-----------------------------------------------------------------------------
+// Particle data we want the particle system query to have.
+//-----------------------------------------------------------------------------
+struct BMPParticleQueryObject_t
+{
+	const studiohdr_t *m_pStudioHdr;
+	const matrix3x4_t *m_pmatBoneToWorld;
+
+	BMPParticleQueryObject_t( void )
+	{
+		m_pStudioHdr = NULL;
+		m_pmatBoneToWorld = NULL;
+	}
+};
+
+//-----------------------------------------------------------------------------
 // Resource file data used in posing the model inside of the model panel.
 //-----------------------------------------------------------------------------
 struct BMPResAnimData_t
@@ -212,18 +227,6 @@ protected:
 	void SetupModelAnimDefaults( void );
 
 public:
-	struct particle_data_t
-	{
-		~particle_data_t();
-
-		void UpdateControlPoints( CStudioHdr *pStudioHdr, matrix3x4_t *pWorldMatrix, const CUtlVector< int > &vecAttachments, int iDefaultBone = 0, const Vector &vecParticleOffset = vec3_origin );
-
-		bool                 m_bIsUpdateToDate;
-		CParticleCollection *m_pParticleSystem;
-		CStudioHdr          *m_pStudioHdr;
-		CBaseModelPanel     *m_pOuter;
-	};
-
 	BMPResData_t	m_BMPResData;			// Base model panel data set in the .res file.
 	QAngle			m_angPlayer;
 	Vector			m_vecPlayerPos;
@@ -252,6 +255,17 @@ protected:
 	CPanelAnimationVar( bool, m_bUseParticle, "use_particle", "0" );
 	CPanelAnimationVar( float, m_flMaxPitch, "max_pitch", "90" );
 
+	struct particle_data_t
+	{
+		~particle_data_t();
+
+		void UpdateControlPoints( CStudioHdr *pStudioHdr, matrix3x4_t *pWorldMatrix, const CUtlVector< int > &vecAttachments, int iDefaultBone = 0, const Vector &vecParticleOffset = vec3_origin );
+
+		bool                     m_bIsUpdateToDate;
+		CParticleCollection     *m_pParticleSystem;
+		CBaseModelPanel         *m_pOuter;
+		BMPParticleQueryObject_t m_BMPQueryObj;
+	};
 	CUtlVector< particle_data_t* > m_particleList;
 
 	
