@@ -212,7 +212,7 @@ void CParticleSystemQuery::GetRandomPointsOnControllingObjectHitBox(
 	Vector vecBasePos;
 	pParticles->GetControlPointAtTime( nControlPointNumber, pParticles->m_flCurTime, &vecBasePos );
 
-	auto lambdaStudioGetRandomPoints = [ & ]( const studiohdr_t *pStudioHdr, const matrix3x4_t *pmatBoneToWorld, int nHitBoxSet = 0, float flModelScale = 1.f, bool bEntity = false )
+	auto lambdaStudioGetRandomPoints = [ & ]( const studiohdr_t *pStudioHdr, const matrix3x4_t *pmatBoneToWorld, int nHitBoxSet = 0, float flModelScale = 1.f )
 	{
 		mstudiohitboxset_t *pSet = pStudioHdr->pHitboxSet( nHitBoxSet );
 		if ( pSet )
@@ -251,7 +251,7 @@ void CParticleSystemQuery::GetRandomPointsOnControllingObjectHitBox(
 						+ DotProduct( vecTryWorldPosition - vecBasePos,
 									  vecDirectionalBias );
 
-					if ( bEntity && nNumTrysToGetAPointInsideTheModel )
+					if ( pMoveParent && nNumTrysToGetAPointInsideTheModel )
 					{
 						// do a point in solid test
 						Ray_t ray;
@@ -292,7 +292,7 @@ void CParticleSystemQuery::GetRandomPointsOnControllingObjectHitBox(
 				studiohdr_t *pStudioHdr = modelinfo->GetStudiomodel( pAnimating->GetModel() );
 				if ( pStudioHdr )
 				{
-					lambdaStudioGetRandomPoints( pStudioHdr, *hitboxbones, pAnimating->GetHitboxSet(), pAnimating->GetModelScale(), true );
+					lambdaStudioGetRandomPoints( pStudioHdr, *hitboxbones, pAnimating->GetHitboxSet(), pAnimating->GetModelScale() );
 				}
 			}
 		}
